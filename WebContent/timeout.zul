@@ -1,0 +1,13 @@
+<window width="80%" title="Sesión expirada" border="normal">
+	<hbox>
+		Su sesión ha expirado, presione
+		<button label="aquí">
+			<attribute name="onClick">
+			<![CDATA[
+				Executions.sendRedirect("index.zul");
+			]]>
+			</attribute>
+		</button>
+		para volver a la aplicación
+	</hbox>
+</window>
