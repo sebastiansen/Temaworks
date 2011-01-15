@@ -27,7 +27,7 @@
   (try 
     (Executions/activate desktop) 
     (func) 
-    (finally (Executions/activate desktop))))
+    (finally (Executions/deactivate desktop))))
 
 (defmacro with-desktop
   "A macro which executes its body within a Server Push context"
@@ -62,3 +62,11 @@
    :email "/img/email.png"
    :signin "/img/door_in.png"
    :down "/img/arrow_down.png"})
+
+(defmacro with-ceremony
+  "A macro that encloses the given clauses with the same bindings separatedly evaluated"
+  [ceremony & clauses]
+  (let [wrapped-clauses (for [clause clauses]
+				  `(let [~@ceremony]
+				     ~clause))]
+    `(do ~@wrapped-clauses)))
