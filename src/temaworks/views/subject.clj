@@ -137,15 +137,21 @@
 			 (.setButtonVisible c %))}))
     ))
 
-;; TODO: reemplazar por multi methods
+
+
+
+;; TODO: replace this mess by a set of multimethods
+;;; tab is used by reference selection widgets
+;;; search-rows is mutated inside, in every case. Bad stuff
+;;; scope is too used in the ref-box case
+;;; widgets too is mutated inside. Candidate for return value.
+;;;; thus, entity-type would be the only proper argument.
 (defn gen-widget
-  [scope tab widgets entity-type att-ref search-rows] ;;; quizás sí debamos hacer los tipos... pero AHORA
-  (if (contains? (:atts entity-type) att-ref)
-	       
-	       ;; Generate widgets for interal attributes
-	       
-    (let [att (att-ref (:atts entity-type))
-		     row (doto (Row.) (.setParent search-rows))
+  [entity-type widgets att-ref search-rows]
+  
+  
+  (let [att (att-ref (:atts entity-type))
+	  row (doto (Row.) (.setParent search-rows))
 	  box (Hbox.)]
 		 
       (case (:widget-type att)
@@ -207,170 +213,171 @@
 					   #(hash-map att-ref (.getValue widget))
 					   #(.setValue widget %)
 					   #(.setReadonly widget (not %)))))))))
-	       
-	       ;; Generate widgets for external references
-	       
-	       (let [refe (att-ref (:refs entity-type))
-		     dir (:direction refe)
-		     rel (trampoline (:rel refe))
-		     card (:card rel)]
-		 
-		 (if (or (and (= :from dir) (= :many-to-one card))
-			 (= :one-to-one card))
-		   
-		   ;;************** One reference **************
-		   ;; TODO: PRIORITY ONE FOR REFACTORING. 200 line+ expression
-		   (case (:in-form-type refe)
-			 
-			 :combo-box
-			   
-			 (let [child-combo (doto (Combobox.) (.setReadonly true))
-			       child (trampoline (:to-entity rel))
-			       child-model (ref [])
-			       child-row (Row.)
-			       wrapper (ref (Widget-wrapper. #(to-fks-ref (:fks-pks rel) (selected child-model child-combo)) nil nil))]
-			     
-			   (.setModel child-combo (ListModelList.))
-			     
-			     
-			     
-			   (if (nil? (:filter-ref child))
-			       
-			     (do
-			       (load-combo 
-				child
-				(let [res (search (:table-name child))]
-				  (dosync (ref-set child-model res))) 
-				child-combo)
-			       (dosync (alter wrapper merge 
-					      {:setter #(add-event! child-combo "onAfterRender"
-								    (fn [] (do (.setSelectedIndex child-combo 
-												 (inc (first (positions
-													      (fn[x](is? child x %))
-													      @child-model)))))))
-						 
-					       :enabler #(doto child-combo
-							   (.setReadonly (not %))
-							   (.setButtonVisible %))})))
-			       
-			     ;;************** Cascade combos **************
-			     ;;(!!!one level only)
-			       
-			     (let [parent-combo (doto (Combobox.) (.setReadonly true))
-				   child-refs (:refs child)
-				   reference ((:filter-ref child) child-refs)
-				   relationship ((:rel reference)) 
-				   parent ((:to-entity relationship))
-				   parent-model (ref [])
-				   parent-row (Row.)
-				   on-select-parent #(do 
-						       (clear-combo child-combo)
-						       (load-combo child
-								   (let [result (search (:table-name child)
-											(to-fks-ref 
-											 (:fks-pks relationship) 
-											 (selected parent-model parent-combo)))]
-								     (dosync (ref-set child-model result))) 
-								   child-combo))]
-				 
-			       (.setModel parent-combo (ListModelList.)) 
-				 
-			       (load-combo parent 
-					   (let [result (search (:table-name parent))]
-					     (dosync (ref-set parent-model result))) parent-combo)
-				 
-			       (cascade-append!
-				[(Label. (:ref-name reference)) parent-row search-rows]
-				[parent-combo parent-row])
+  )
 
-			       (add-event! 
-				parent-combo "onSelect"
-				#(do
-				   (on-select-parent)
-				   (add-event! child-combo "onAfterRender" 
-					       (fn []
-						 (if (> (.getSelectedIndex parent-combo) 0)
-						   (.setSelectedIndex child-combo 1)
-						   (.setSelectedIndex child-combo 0))))))
+(defn gen-ref-widgets
+  [entity-type scope tab widgets att-ref search-rows]
+  (let [refe (att-ref (:refs entity-type))
+	dir (:direction refe)
+	rel (trampoline (:rel refe))
+	card (:card rel)]
+    
+    (if (or (and (= :from dir) (= :many-to-one card))
+	    (= :one-to-one card))
+      
+      ;;************** One reference **************
+      ;; TODO: PRIORITY ONE FOR REFACTORING. 200 line+ expression
+      (case (:in-form-type refe)
+	    
+	    :combo-box
+	    
+	    (let [child-combo (doto (Combobox.) (.setReadonly true))
+		  child (trampoline (:to-entity rel))
+		  child-model (ref [])
+		  child-row (Row.)
+		  wrapper (ref (Widget-wrapper. #(to-fks-ref (:fks-pks rel) (selected child-model child-combo)) nil nil))]
+	      
+	      (.setModel child-combo (ListModelList.))
+	      
+	      
+	      
+	      (if (nil? (:filter-ref child))
+		
+		(do
+		  (load-combo 
+		   child
+		   (let [res (search (:table-name child))]
+		     (dosync (ref-set child-model res))) 
+		   child-combo)
+		  (dosync (alter wrapper merge 
+				 {:setter #(add-event! child-combo "onAfterRender"
+						       (fn [] (do (.setSelectedIndex child-combo 
+										     (inc (first (positions
+												  (fn[x](is? child x %))
+												  @child-model)))))))
+				  
+				  :enabler #(doto child-combo
+					      (.setReadonly (not %))
+					      (.setButtonVisible %))})))
+		
+		;;************** Cascade combos **************
+		;;(!!!one level only)
+		
+		(let [parent-combo (doto (Combobox.) (.setReadonly true))
+		      child-refs (:refs child)
+		      reference ((:filter-ref child) child-refs)
+		      relationship ((:rel reference)) 
+		      parent ((:to-entity relationship))
+		      parent-model (ref [])
+		      parent-row (Row.)
+		      on-select-parent #(do 
+					  (clear-combo child-combo)
+					  (load-combo child
+						      (let [result (search (:table-name child)
+									   (to-fks-ref 
+									    (:fks-pks relationship) 
+									    (selected parent-model parent-combo)))]
+							(dosync (ref-set child-model result))) 
+						      child-combo))]
+		  
+		  (.setModel parent-combo (ListModelList.)) 
+		  
+		  (load-combo parent 
+			      (let [result (search (:table-name parent))]
+				(dosync (ref-set parent-model result))) parent-combo)
+		  
+		  (cascade-append!
+		   [(Label. (:ref-name reference)) parent-row search-rows]
+		   [parent-combo parent-row])
 
-				 
-			       (dosync 
-				(alter wrapper merge 
-				       {:setter 
-					#(let [parent-pks (to-pks-ref (:fks-pks relationship) %)
-					       hack (ref nil)
-					       hack-prima (ref nil)]
-					   (add-event! parent-combo "onAfterRender"
-						       (fn [] (do (.setSelectedIndex
-								   parent-combo
-								   (first (positions (fn[x](is? parent x parent-pks)) @parent-model)))
-								  (when (nil? hack-prima)
-								    (add-event! child-combo "onAfterRender"
-										(fn[] (when (nil? @hack)
-											(.setSelectedIndex
-											 child-combo 
-											 (inc (first (positions
-												      (fn[x](is? child x %))
-												      @child-model))))
-											(dosync(ref-set hack "HACK ATTACK!"))))))
-								  (dosync (ref-set hack-prima "PHP es una buena herramienta"))
-								  (on-select-parent)))))
-					:enabler #(doseq [c [parent child]]
-						    (.setButtonVisible c %))}))
-				 
-			       (add-event! parent-combo "onAfterRender"
-					   #(do
-					      (.setSelectedIndex parent-combo 0) 
-					      (on-select-parent)
-					      (add-event! child-combo "onAfterRender"
-							  (fn [] (.setSelectedIndex child-combo 0)))))))
-			     
-			     
-			   (dosync (alter widgets assoc att-ref @wrapper))
-			     
-			   (cascade-append!
-			    [(Label. (:ref-name refe)) child-row search-rows]
-			    [child-combo child-row])
-			   )
-			 
-			 
-			 :ref-box
-			 
-			 (let [ref-box (doto (Textbox.) (.setReadonly true))
-			       select-button (doto (Button. "Seleccionar") (.setImage (:up icons)))
-			       edit-button (doto (Button. "Editar") (.setImage (:edit icons)))
-			       to-entity ((:to-entity rel))
-			       reference (ref {})
-			       setter #(dosync 
-					(ref-set reference %)
-					(.setValue ref-box ((:to-str to-entity) %))
-					(.setDisabled edit-button false))
-			       box (Hbox.)
-			       row (Row.)]
-			   
-			   (cascade-append! 
-			    [(Label. (str (:ref-name refe) ":")) row search-rows]
-			    [ref-box box row])
-			   
-			   (cascade-append!
-			    [select-button box])
-			   
-			   (add-event! select-button "onClick"
-				       #(gen-ref-selector to-entity setter (:ref-name refe) (.getPage tab) scope))
-			   
-			   (add-event! edit-button "onClick"
-				       #(gen-form to-entity reference scope))
-			   
-			   (.setDisabled edit-button true)
-			   
-			   (dosync (alter widgets assoc att-ref (Widget-wrapper. 
-								 #(to-fks-ref (:fks-pks rel) @reference)
-								 setter
-								 #(.setDisabled select-button %))))))
-		   
-		   ;;************** Many references **************
-		   
-		   (list))))
+		  (add-event! 
+		   parent-combo "onSelect"
+		   #(do
+		      (on-select-parent)
+		      (add-event! child-combo "onAfterRender" 
+				  (fn []
+				    (if (> (.getSelectedIndex parent-combo) 0)
+				      (.setSelectedIndex child-combo 1)
+				      (.setSelectedIndex child-combo 0))))))
+
+		  
+		  (dosync 
+		   (alter wrapper merge 
+			  {:setter 
+			   #(let [parent-pks (to-pks-ref (:fks-pks relationship) %)
+				  hack (ref nil)
+				  hack-prima (ref nil)]
+			      (add-event! parent-combo "onAfterRender"
+					  (fn [] (do (.setSelectedIndex
+						      parent-combo
+						      (first (positions (fn[x](is? parent x parent-pks)) @parent-model)))
+						     (when (nil? hack-prima)
+						       (add-event! child-combo "onAfterRender"
+								   (fn[] (when (nil? @hack)
+									   (.setSelectedIndex
+									    child-combo 
+									    (inc (first (positions
+											 (fn[x](is? child x %))
+											 @child-model))))
+									   (dosync(ref-set hack "HACK ATTACK!"))))))
+						     (dosync (ref-set hack-prima "PHP es una buena herramienta"))
+						     (on-select-parent)))))
+			   :enabler #(doseq [c [parent child]]
+				       (.setButtonVisible c %))}))
+		  
+		  (add-event! parent-combo "onAfterRender"
+			      #(do
+				 (.setSelectedIndex parent-combo 0) 
+				 (on-select-parent)
+				 (add-event! child-combo "onAfterRender"
+					     (fn [] (.setSelectedIndex child-combo 0)))))))
+	      
+	      
+	      (dosync (alter widgets assoc att-ref @wrapper))
+	      
+	      (cascade-append!
+	       [(Label. (:ref-name refe)) child-row search-rows]
+	       [child-combo child-row])
+	      )
+	    
+	    
+	    :ref-box
+	    
+	    (let [ref-box (doto (Textbox.) (.setReadonly true))
+		  select-button (doto (Button. "Seleccionar") (.setImage (:up icons)))
+		  edit-button (doto (Button. "Editar") (.setImage (:edit icons)))
+		  to-entity ((:to-entity rel))
+		  reference (ref {})
+		  setter #(dosync 
+			   (ref-set reference %)
+			   (.setValue ref-box ((:to-str to-entity) %))
+			   (.setDisabled edit-button false))
+		  box (Hbox.)
+		  row (Row.)]
+	      
+	      (cascade-append! 
+	       [(Label. (str (:ref-name refe) ":")) row search-rows]
+	       [ref-box box row])
+	      
+	      (cascade-append!
+	       [select-button box])
+	      
+	      (add-event! select-button "onClick"
+			  #(gen-ref-selector to-entity setter (:ref-name refe) (.getPage tab) scope))
+	      
+	      (add-event! edit-button "onClick"
+			  #(gen-form to-entity reference scope))
+	      
+	      (.setDisabled edit-button true)
+	      
+	      (dosync (alter widgets assoc att-ref (Widget-wrapper. 
+						    #(to-fks-ref (:fks-pks rel) @reference)
+						    setter
+						    #(.setDisabled select-button %))))))
+      
+      ;;************** Many references **************
+      
+      (list)))
   )
 
 (defn gen-selector
@@ -519,7 +526,11 @@
 	   (doseq [att-ref (:search-order entity-type)]
 	     
 	     ;; Horrible
-	     (gen-widget scope tab widgets entity-type att-ref search-rows)
+	     (if (contains? (:atts entity-type) att-ref)
+	       (gen-widget entity-type widgets  att-ref search-rows)
+	       (gen-ref-widgets entity-type scope tab widgets att-ref search-rows)
+	       )
+
 	     ))
 	 
 	 ;;************** Create table **************	 
