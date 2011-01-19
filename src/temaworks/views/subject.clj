@@ -6,7 +6,7 @@
 	    Listbox Listhead Listheader Listitem
 	    Paging           
 	    Panel Panelchildren
-	    Vbox Hbox
+	    Vbox Hbox Vlayout
 	    Borderlayout Center West North South
 	    Grid Row Rows Columns Column
 	    Label Textbox Intbox
@@ -430,7 +430,7 @@
 	   
 	   ;;************** Toolbar **************
 	   
-	   tool-bar (Toolbar.)
+	   tool-bar (doto (Toolbar.) (.setHflex "1"))
 	   search-tbb (doto (Toolbarbutton. "Búsqueda avanzada")(.setImage (:down icons)))
 	   search-button (doto (Menuitem. "Buscar")(.setImage (:find icons)))
 	   
@@ -443,10 +443,9 @@
 	   ;;************** Table **************
 	   
 	   table-model (ListModelList.)
-	   table (doto (Listbox.) (.setModel table-model) (.setRows 30) (.setWidth "100%"))
+	   table (doto (Listbox.) (.setModel table-model) (.setRows 30))
 	   table-head (Listhead.)
-	   table-layout (doto (Borderlayout.) (.setVflex "true"))
-	   center-box (Vbox.)
+	   center-box (Vlayout.)
 	   
 	   paging (doto (Paging.) (.setPageSize (:per-page @search-criteria)))]
 
@@ -479,11 +478,6 @@
 
 	 ;;************** Create GUI **************
 
-	 (if-not in-ref? (cascade-append! 
-			  [create-button ops-menu (North.) table-layout]
-			  [update-button ops-menu]
-			  [delete-button ops-menu]))
-	 
 	 (if (not (nil?(:icon entity-type)))
 	   (.setImage tab ((:icon entity-type) icons)))
 
@@ -500,15 +494,20 @@
 				       #(.setOpen search-panel (not (.isOpen search-panel))))) tool-bar]
 	  
 	  [search-rows (doto (Grid.) (.appendChild (doto (Columns.) (.appendChild (doto (Column.) (.setWidth "20%"))))))
-	   (doto search-panel (.setOpen false)) center-box]
-	  
-	  [table-head
-	   table
-	   (doto (Center.)(.setFlex true))
-	   table-layout
+	   (doto search-panel (.setOpen false)) center-box])
+
+(if-not in-ref? (cascade-append! 
+			  [create-button ops-menu center-box]
+			  [update-button ops-menu]
+			  [delete-button ops-menu]))
+	  (cascade-append! 
+	  [table-head table
+	   ;(doto (Center.)(.setFlex true))
+	   ;table-layout
+     (Panelchildren.)
+     (Panel.)
 	   center-box
-	   center
-	   layout]
+	   (doto center (.setAutoscroll true)) layout]
 	  
 	  [paging (doto (South.) (.setFlex true)) layout])
 
