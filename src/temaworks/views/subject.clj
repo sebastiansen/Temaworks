@@ -71,7 +71,8 @@
       (nth @model (- (.getSelectedIndex combo) 1))
       nil)))
 
-(defn gen-cascade-filter [child child-combo child-model rows wrapper]
+(defn gen-cascade-filter
+  [child child-combo child-model rows wrapper]
   (let [parent-combo (doto (Combobox.) (.setReadonly true))
 	child-refs (:refs child)
 	reference ((:filter-ref child) child-refs)
@@ -119,20 +120,25 @@
     ;;add to relationships
     (dosync 
      (alter wrapper merge 
-	    {:setter 
+	    {:setter
 	     #(let [parent-pks (to-pks-ref (:fks-pks relationship) %)
-		    hack (ref nil)]
-		(add-event! parent-combo "onAfterRender"
-			    (fn[] (do (.setSelectedIndex parent-combo
-							 (inc (first (positions (fn[x](is? parent x parent-pks))
-										@parent-model))))
-				      (add-event! child-combo "onAfterRender"
-						  (fn[] (when (nil? @hack)
-							  (.setSelectedIndex child-combo 
-									     (inc (first (positions (fn[x](is? child x %)) @child-model))))
-							  (dosync(ref-set hack "HACK ATTACK!")))))
-				      (on-select-parent)
-				      ))))                             
+				  hack (ref nil)
+				  hack-prima (ref nil)]
+			      (add-event! parent-combo "onAfterRender"
+					  (fn [] (do (.setSelectedIndex
+						      parent-combo
+						      (first (positions (fn[x](is? parent x parent-pks)) @parent-model)))
+						     (when (nil? hack-prima)
+						       (add-event! child-combo "onAfterRender"
+								   (fn[] (when (nil? @hack)
+									   (.setSelectedIndex
+									    child-combo 
+									    (inc (first (positions
+											 (fn[x](is? child x %))
+											 @child-model))))
+									   (dosync(ref-set hack "HACK ATTACK!"))))))
+						     (dosync (ref-set hack-prima "PHP es una buena herramienta"))
+						     (on-select-parent)))))                             
 	     :enabler #(doseq [c [parent child]]
 			 (.setButtonVisible c %))}))
     ))
@@ -145,35 +151,33 @@
 ;;; search-rows is mutated inside, in every case. Bad stuff
 ;;; scope is too used in the ref-box case
 ;;; widgets too is mutated inside. Candidate for return value.
-;;;; thus, entity-type would be the only proper argument.
+;;;; thus, entity-type would be the only proper argument. And maybe att-ref
 (defn gen-widget
-  [entity-type widgets att-ref search-rows]
-  
-  
+  "Construct a Label-Widget pair for the given attribute"
+  [entity-type att-ref search-rows]
   (let [att (att-ref (:atts entity-type))
-	  row (doto (Row.) (.setParent search-rows))
-	  box (Hbox.)]
-		 
-      (case (:widget-type att)
+	row (doto (Row.) (.setParent search-rows))
+	box (Hbox.)]
+    
+    (case (:widget-type att)
 		       ;; Not supported yet
 		       ;;  :datetime ()
-		       
 		       :multi-option
 		       (let [widget-type ((:widget-type (:aggregates att)) widget-types)
 			     widget (to-class widget-type)]
 			 (cascade-append!
 			  [(Label. (str (:att-name att) ":")) row]
 			  [widget box row])
+			 
 			 (case (:widget-type (:aggregates att))
 			       :combobox
 			       (do 
 				 (doseq [x (:options (:aggregates att))] (.appendItem widget x))
 				 (.setReadonly widget true)
-				 (dosync (alter widgets assoc att-ref 
-						(Widget-wrapper.
-						 #(hash-map att-ref (.getValue widget))
-						 #(.setValue widget %)
-						 #(.setButtonVisible widget %)))))
+				 (Widget-wrapper.
+				  #(hash-map att-ref (.getValue widget))
+				  #(.setValue widget %)
+				  #(.setButtonVisible widget %)))
 			       
 			       :radiogroup
 			       (do
@@ -181,14 +185,13 @@
 				 (doseq [x (:options (:aggregates att))] 
 				   (cascade-append! [(Radio. x) widget]))
 					;(.setSelectedIndex widget 0)
-				 (dosync (alter widgets assoc att-ref 
-						(Widget-wrapper.
-						 #(if (nil? (.getSelectedItem widget))
-						    (hash-map att-ref nil)
-						    (hash-map att-ref (.. widget getSelectedItem getLabel)))
-						 #(.setSelectedItem widget (first(filter(fn[x](= (.getLabel x) %)) (.getItems widget))))
-						 #(doseq [x (.getItems widget)] 
-						    (.setDisabled x (not %)))))))))
+				 (Widget-wrapper.
+				  #(if (nil? (.getSelectedItem widget))
+				     (hash-map att-ref nil)
+				     (hash-map att-ref (.. widget getSelectedItem getLabel)))
+				  #(.setSelectedItem widget (first(filter(fn[x](= (.getLabel x) %)) (.getItems widget))))
+				  #(doseq [x (.getItems widget)] 
+				     (.setDisabled x (not %)))))))
 		       
 		       ;;rest
 		       (let [widget-type ((:widget-type att) widget-types)
@@ -196,27 +199,26 @@
 			 (cascade-append!
 			  [(Label. (str (:att-name att) ":")) row]
 			  [widget box row])
-			 (when (=  (:widget-type att))
-			   :textarea
+			 
+			 (when (=  (:widget-type att) :textarea)
 			   (do
 			     (.setRows widget 5)
 			     (.setWidth widget "500px")))
 			 
 			 (if (= :checkbox (:widget-type att))
-			   (dosync (alter widgets assoc att-ref 
-					  (Widget-wrapper.
-					   #(hash-map att-ref (.isChecked widget))
-					   #(.setChecked widget %)
-					   #(.setReadonly widget (not %)))))
-			   (dosync (alter widgets assoc att-ref 
-					  (Widget-wrapper.
-					   #(hash-map att-ref (.getValue widget))
-					   #(.setValue widget %)
-					   #(.setReadonly widget (not %)))))))))
-  )
+			   (Widget-wrapper.
+			    #(hash-map att-ref (.isChecked widget))
+			    #(.setChecked widget %)
+			    #(.setReadonly widget (not %)))
+			   ;; Whatever 
+			   (Widget-wrapper.
+			    #(hash-map att-ref (.getValue widget))
+			    #(.setValue widget %)
+			    #(.setReadonly widget (not %))))))))
 
+;; assoc widgets att-ref Widget-wrapper 
 (defn gen-ref-widgets
-  [entity-type scope tab widgets att-ref search-rows]
+  [entity-type scope tab att-ref search-rows]
   (let [refe (att-ref (:refs entity-type))
 	dir (:direction refe)
 	rel (trampoline (:rel refe))
@@ -332,12 +334,14 @@
 				 (add-event! child-combo "onAfterRender"
 					     (fn [] (.setSelectedIndex child-combo 0)))))))
 	      
-	      
-	      (dosync (alter widgets assoc att-ref @wrapper))
-	      
+
 	      (cascade-append!
 	       [(Label. (:ref-name refe)) child-row search-rows]
 	       [child-combo child-row])
+
+	      ;; return value
+	      @wrapper
+	      
 	      )
 	    
 	    
@@ -369,11 +373,12 @@
 			  #(gen-form to-entity reference scope))
 	      
 	      (.setDisabled edit-button true)
-	      
-	      (dosync (alter widgets assoc att-ref (Widget-wrapper. 
-						    #(to-fks-ref (:fks-pks rel) @reference)
-						    setter
-						    #(.setDisabled select-button %))))))
+
+	      ;;return value
+	      (Widget-wrapper. 
+	       #(to-fks-ref (:fks-pks rel) @reference)
+	       setter
+	       #(.setDisabled select-button %))))
       
       ;;************** Many references **************
       
@@ -520,18 +525,14 @@
 	  [paging (doto (South.) (.setFlex true)) layout])
 
 	 ;;************** Create advanced search form **************
-
-	 (let [widgets (ref {})]
-
-	   (doseq [att-ref (:search-order entity-type)]
-	     
-	     ;; Horrible
-	     (if (contains? (:atts entity-type) att-ref)
-	       (gen-widget entity-type widgets  att-ref search-rows)
-	       (gen-ref-widgets entity-type scope tab widgets att-ref search-rows)
-	       )
-
-	     ))
+	 ;; Less horrible
+	 ;; WRONG
+	 (dorun (map (fn [att-ref]
+		       (if (contains? (:atts entity-type) att-ref)
+			 (gen-widget entity-type att-ref search-rows)
+			 (gen-ref-widgets entity-type scope tab att-ref search-rows)))
+		     (:search-order entity-type)))
+	 
 	 
 	 ;;************** Create table **************	 
 	 
