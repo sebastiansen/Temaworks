@@ -125,12 +125,14 @@
 				  hack (ref nil)
 				  hack-prima (ref nil)]
 			      (add-event! parent-combo "onAfterRender"
-					  (fn [] (do (.setSelectedIndex
+					  (fn [] (do               
+                (.setSelectedIndex
 						      parent-combo
-						      (first (positions (fn[x](is? parent x parent-pks)) @parent-model)))
-						     (when (nil? hack-prima)
+						      (inc (first (positions (fn[x](is? parent x parent-pks)) @parent-model))))
+                (on-select-parent)
+						     (when (nil? @hack-prima)
 						       (add-event! child-combo "onAfterRender"
-								   (fn[] (when (nil? @hack)
+								   (fn[] (when (nil? @hack) 
 									   (.setSelectedIndex
 									    child-combo 
 									    (inc (first (positions
