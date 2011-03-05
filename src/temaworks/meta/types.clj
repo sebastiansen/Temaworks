@@ -4,38 +4,41 @@
             Checkbox Combobox
             Button Image)))
 
-(declare pks)
-
 (defrecord Entity-type
-  [table-name                 ;Name of table (keyword)
-   single-name                ;Single name for  
-   multi-name                 ;Single name for  
-   atts                       ;Attributes
-   refs                       ;References corresponing to relationships
-   in-menu                    ;
-   form-order                 ;the name of reference-bound key can't be the same as that of an attribute
-   selector-order             ;ditto
-   search-order               ;same as selector-order
-   filter-ref                 ;
-   to-str                     ;
-   operations                 ;global operations :search? :create? :update? :delete?
-   auto-inc-pk?
-   icon])               
+  [table-name                 ;; Name of table (keyword)
+   single-name                ;; Single name  
+   multi-name                 ;; Plural name for  
+   atts                       ;; Attributes
+   refs                       ;; References corresponing to relationships
+   in-menu                    ;; Specifies if this entity appear in the global menu
+   form-order                 ;; (vector) 
+   selector-order             ;; (vector) 
+   search-order               ;; (hashmap) key -> Attribute | Refrence
+                              ;;           val -> true | false (is-interval?) 
+   filter-ref                 ;;   
+   to-str                     ;; 
+   operations                 ;; Global operations :search? :create? :update? :delete?
+   auto-inc-pk?               ;;
+   ;; on-create
+   ;; on-update
+   icon])
 
 (defrecord Reference
   [ref-name
+   key-name
    rel
    direction
-   in-form-type
-   aggregates
-   ;computable?
+   widget-type
+   mutual-ref
+   ;; computable?
    ])
 
 (defrecord Attribute
-  [att-name 
-   data-type 
+  [att-name
+   col-name
+   data-type
    widget-type 
-   pk? 
+   pk?
    not-null?
    computable?
    aggregates])
@@ -46,56 +49,9 @@
    pk?
    not-null?
    card
-   fks-pks
+   fks-pks                    ;; {:fk1 :pk1 :fk2 :pk2 ...}
    mapping-entity])
 
-(defn att-pks
-  [entity-type]
-  (map #(key %) (filter #(:pk? (val %)) (:atts entity-type))))
-
-(defn ref-pks
-  [entity-type]
-  (map #(key %) (filter #(let [rel ((:rel (val %)))]
-                           (and 
-                             (= (:direction (val %)) :from)
-                             (not= (:card rel) :many-to-many)
-                             (:pk? rel))) (:refs entity-type))))
-
-(defn to-pks-ref 
-  [fks-pks r]
-  (apply 
-    merge 
-    (for [[fk pk] fks-pks] 
-      (hash-map pk (fk r)))))
-
-(defn to-fks-ref 
-  [fks-pks r]
-  (apply 
-    merge 
-    (for [[fk pk] fks-pks] 
-      (hash-map fk (pk r)))))
-
-(defn is?
-  [entity-type this that]
-  (let [pkz (pks entity-type)]
-    (= (select-keys this pkz) (select-keys that pkz))))
-
-(defn pks
-  [entity-type]
-  (let [refs (ref-pks entity-type)]
-    (if (empty? refs) 
-      (att-pks entity-type)
-      (apply conj (att-pks entity-type) 
-        (apply conj [] (map #(keys(:fks-pks((:rel (% (:refs entity-type)))))) 
-                         refs))))))
-
-(defn pks-att-ref
-  [entity-type] 
-  (let [r (ref-pks entity-type)]
-    (if  (empty? r)
-      (att-pks entity-type) 
-      (apply conj (att-pks entity-type) r))))
-   
 (def widget-types
   {:textbox "org.zkoss.zul.Textbox"
    :intbox "org.zkoss.zul.Intbox"
@@ -105,7 +61,9 @@
    :datebox "org.zkoss.zul.Datebox"
    :timebox "org.zkoss.zul.Timebox"
    :radiogroup "org.zkoss.zul.Radiogroup"
-   :combobox "org.zkoss.zul.Combobox"})
+   :combobox "org.zkoss.zul.Combobox"
+   :spinner "org.zkoss.zul.Spinner"
+   })
 
 (def input-formats
   {:rut "#.###.###-#"
@@ -113,3 +71,15 @@
    :decimal "#.##0,##"
    })
 
+(defn is-type? [value datatype] (isa? (type value) datatype))
+
+(defn table-name
+  [instance]
+  (cond 
+    (is-type? instance Entity-type)
+    (:table-name instance)
+    (is-type? instance Reference)
+    (:table-name ((:to-entity ((:rel instance)))))
+    :else
+    nil
+    ))

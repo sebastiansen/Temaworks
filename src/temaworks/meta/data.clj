@@ -3,7 +3,7 @@
   (:import [temaworks.meta.types Entity-type Attribute Reference Relationship]))
 
 (declare city region client policy company policy-sub-type policy-type item)
-
+(comment
 (defn city-has-region
   []
   (Relationship.
@@ -56,7 +56,7 @@
        "Ramo"
        #(policy-sub-type-has-policy-type)
        :from
-       :combo-box
+       :combobox
        nil)}
     false nil nil nil :ramo 
     #(str (:subramo %))
@@ -121,7 +121,7 @@
        "Comuna"
        #(client-has-city)
        :from
-       :combo-box
+       :combobox
        nil)}   
     true
     [:rut :nombres :apellidos :sexo :estado_civil :comuna :direccion :movil :fono_casa :fono_trabajo :email] 
@@ -152,6 +152,7 @@
     {}
     true
     [:nombre :contacto :telefonos :direccion]
+    [[:nombre false false]]
     [:nombre :contacto :telefonos :direccion]
     []
     nil
@@ -182,14 +183,14 @@
        "Compañía"
        #(policy-has-company)
        :from
-       :combo-box
+       :combobox
        nil)
      :subramo
      (Reference.
        "Sub Ramo"
        #(policy-has-policy-sub-type)
        :from
-       :combo-box
+       :combobox
        nil)
      :items
      (Reference.
@@ -319,4 +320,4 @@
 
 (def initial-view {:view-type :selector :entity-type (trampoline #(client))})
 
-(def app-name "Sistema Gestión Pólizas Generales y Vida")
+(def app-name "Sistema Gestión Pólizas Generales y Vida"))

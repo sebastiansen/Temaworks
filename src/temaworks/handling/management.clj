@@ -21,54 +21,57 @@
   (:import (org.zkoss.zk.ui Sessions))
   
   (:use
-    temaworks.meta.data 
+    temaworks.handling.prueba
     temaworks.handling.crud
     temaworks.handling.aspect
-    temaworks.views.subject))
+    temaworks.handling.cloudmap
+    temaworks.process.views
+    temaworks.meta.authorization))
 
 (declare launch-sign-in load-gui) 
 
 (defn init 
   "Initiates the application in the CLOUD"
   [component layout desktop page]
-  (let [signals-map (ref {}) 
-        has-record-map (ref {})
+  (let [signals-map (ref {}) ;; Tab → (Keyword → Record → Record) - in scope
+        has-cloud-map?-map (ref {}) ;; Tab → (Record → Bool) - in scope
         tabs (Tabs.)
         tab-panels (Tabpanels.)
         tab-box (Tabbox.)]
     
     (letfn [(signal 
-              [table-name new-rec old-rec]
-              (doseq [x @signals-map]
-                ((val x) table-name new-rec old-rec)))
+              [entity-type new-rec old-rec]
+              (doseq [[tab signal] @signals-map]
+                (signal entity-type new-rec old-rec)))
             
             (close-signal
 	            [tab]
 	            (dosync 
 	              (alter signals-map dissoc tab)
-	              (alter has-record-map dissoc tab)))
+	              (alter has-cloud-map?-map dissoc tab)))
 	          
 	          (gen-view
+             ;; Not associated with a single instance - in scope
 	            ([tab tab-panel signal]
 	              (cascade-append!
 	                [tab tabs]
 	                [tab-panel tab-panels])
 	              (.setSelectedTab tab-box tab)
 	              (dosync (alter signals-map assoc tab signal)))
-	            
-	            ([tab tab-panel signal record has-record?]
-	              (if (not (empty? @has-record-map))
-	                (loop [views (seq @has-record-map)]
-	                  (if ((val (first views)) @record)
+	            ;; Can only be opened once
+	            ([tab tab-panel signal cloud-map has-cloud-map?]
+	              (if (not (empty? @has-cloud-map?-map))
+	                (loop [views (seq @has-cloud-map?-map)]
+	                  (if ((val (first views)) cloud-map)
 	                    (.setSelected (key (first views)) true)
-	                    (if (= (first views) (last @has-record-map))
+	                    (if (= (first views) (last @has-cloud-map?-map))
 	                      (do
 	                        (gen-view tab tab-panel signal)
-	                        (dosync (alter has-record-map assoc tab has-record?)))
+	                        (dosync (alter has-cloud-map?-map assoc tab has-cloud-map?)))
 	                      (recur (next views)))))
 	                (do
 	                  (gen-view tab tab-panel signal)
-	                  (dosync (alter has-record-map assoc tab has-record?))))))]
+	                  (dosync (alter has-cloud-map?-map assoc tab has-cloud-map?))))))]
       
       (let [scope {:gen-view gen-view :close-signal close-signal :signal signal}]
         
@@ -98,7 +101,7 @@
                           ;  #(println desktop))
                           
                           (add-event! create-button "onClick"
-                            #(gen-form x scope)))))
+                            #(apply gen-view (gen-form x scope))))))
                     
                     (cascade-append!
                       [(doto (Image. (:app-icon icons)) (.setHeight "50px")) north-box (doto (North.) (.setFlex true)) layout]
@@ -115,10 +118,10 @@
                               (proxy [EventListener] []
                                 (onEvent[e]
                                   (when (= (.. e getData intValue) Messagebox/YES)
-                                    (doseq [t (apply conj [] (.getChildren tabs))]
+                                    (doseq [t (apply vector (.getChildren tabs))]
                                       (.detach t)
                                       (close-signal t))
-                                    (doseq [tp (apply conj [] (.getChildren tab-panels))]
+                                    (doseq [tp (apply vector (.getChildren tab-panels))]
                                       (.removeChild tab-panels tp)))))))
                          (.setImage (:cancel icons))
                          (.setTooltip
@@ -138,9 +141,8 @@
                         pass-row (Row.)
                         rows (Rows.)
                         menu (Menubar.)
-                        access #(if (exists? :temaworks_user {:user (.getValue user) :pass (.getValue pass)})
+                        access #(if (exists? (hack-map->cloud-map temaworks-user {:user (.getValue user) :pass (.getValue pass)}))
                                   (do
-                                    (println win)
                                     (.detach win)
                                     (load-gui))
                                   (Messagebox/show  

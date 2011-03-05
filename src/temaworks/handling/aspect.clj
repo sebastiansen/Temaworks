@@ -15,11 +15,23 @@
          (event)))))
 
 (defn cascade-append!
-  [hierarchy & hierarchies]
-  (doseq [components (cons hierarchy hierarchies)]
-    (reduce (fn [child parent] 
-              (.appendChild parent child) parent)
-      components)))
+  ([hierarchy]
+    (reduce 
+      (fn [child parent] 
+        (doto parent (.appendChild child)))
+        hierarchy))
+  ([hierarchy & hierarchies]
+    (doseq [components (cons hierarchy hierarchies)]
+      (reduce (fn [child parent]
+                (.appendChild parent child)
+                parent)
+        components))))
+
+(defn multi-append! 
+  [parent-widget children-widgets]
+  (doseq [c children-widgets]
+      (.appendChild parent-widget c))
+  parent-widget)
 
 (defn with-desktop*
   "Receives a procedure which is executed within a Server Push context"
@@ -43,6 +55,9 @@
        (with-desktop* ~variable
          (fn []
            ~@body)))))
+
+(defn third [coll]
+  (nth coll 3))
 
 (def icons
   {:add "/img/add.png"
@@ -70,3 +85,15 @@
 				  `(let [~@ceremony]
 				     ~clause))]
     `(do ~@wrapped-clauses)))
+
+(defn filter-keys
+  [dict predicate]
+  (select-keys dict (filter predicate (keys dict))))
+
+(defmacro dbg[x] `(let [x# ~x] (println "dbg:" '~x "=" x#) (println "\tType = " (type x#)) x#))
+
+(defn to-class
+  [s & args]
+  (clojure.lang.Reflector/invokeConstructor
+   (resolve (symbol s))
+   (to-array args)))
