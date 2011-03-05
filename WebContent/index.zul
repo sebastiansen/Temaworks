@@ -1,0 +1,10 @@
+<zk>
+	<zscript>
+		if (!desktop.isServerPushEnabled()) {
+		desktop.enableServerPush(true);
+		}
+    </zscript>
+	<borderlayout apply="temaworks.handling.JavaInterop">
+
+	</borderlayout>
+</zk>
