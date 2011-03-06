@@ -64,6 +64,17 @@
       (gen-widget cbox)
       (gen-widget))))
 
+(defrecord Many-ref-widget-wrapper [widget-type label widget getter setter enabler unlocker signal gen-widget]
+  Widget-wrapper
+  (turn-optional-widget [this]
+    (optional-helper this))
+  (constrain-widget [this])
+  (empty-value? [this value])
+  (gen-rows [this]
+    (if-let [cbox (:checkbox this)]
+      (gen-widget cbox)
+      (gen-widget))))
+
 (defrecord Interval-widget-wrapper [widget-type label widget getter setter enabler unlocker primitive-wrappers]
   Widget-wrapper
   (turn-optional-widget [this]
@@ -275,92 +286,86 @@
                            rows)) 
                        "18%")])])))))
        
-       (clear-combo [{:keys [combo]}]
-         (.clear (cast ListModelList (.getModel combo))))
+       (clear-combo [c-wrapper]
+         (.clear (cast ListModelList (.getModel (:combo c-wrapper)))))
   
        (load-combo [{:keys [entity-type combo model]}
-                    cloud-maps]
-         (dosync (ref-set model cloud-maps))
+                    record-maps]
+         (dosync (ref-set model record-maps))
          (.addAll (cast ListModelList (.getModel combo)) 
            (reduce
              #(do (.add %1 %2) %1)
              (ArrayList.)
              (conj 
-               (map #((:to-str entity-type) %) cloud-maps)
+               (map #((:to-str entity-type) %) record-maps)
                "Seleccionar..."))))
   
        (selected [{:keys [entity-type combo model]}]
          (let [idx (.getSelectedIndex combo)]
            (if (zero? idx)
-             {entity-type nil}
+             (record-map entity-type)
              (nth @model (dec idx)))))
        
-       (set-value [{:keys [combo model]} cloud-map]
+       (set-value [{:keys [combo model]} record-map]
          (.setSelectedIndex combo 
-           (inc (first (positions (fn [x] (is? (dbg x) (dbg cloud-map))) (dbg @model))))))
+           (inc (first (positions (fn [x] (is? x record-map)) @model)))))
   
        (make-cascade-combos
          [c-wrappers]
          
          (defn- load-children
-           [c-wrappers cloud-map with-cleaning?]
-           (if-not (empty? (children cloud-map))
+           [c-wrappers record-map with-cleaning?]
+           (if-not (empty? (children record-map))
              (reduce 
-               (fn [cloud-map c-wrapper]
+               (fn [record-map c-wrapper]
                  (let [{:keys [filter-ref entity-type combo]} c-wrapper
-                       new-map {entity-type {filter-ref (with-meta (children cloud-map) {:fuzzy false})}}]
-                   ;;(add-event! combo "onAfterRender" 
-                   ;;  (fn []
-                   ;;    (do
+                       new-map (record-map entity-type filter-ref (with-meta (children record-map) {:fuzzy false}))]
                    (when with-cleaning? (clear-listeners! combo "onAfterRender"))
                    (clear-combo c-wrapper)
-                   (load-combo c-wrapper @(make-joins (cloud-map->table new-map) new-map))
-                   ;;)))
+                   (load-combo c-wrapper @(make-joins (record-map->table new-map) new-map))
                    new-map))
-               cloud-map
+               record-map
                (rest c-wrappers))
              (doseq [{:keys [combo]} (rest c-wrappers)]
                (.setSelectedIndex combo 0))))
       
          (defn- set-parents
-           [c-wrappers cloud-map]
+           [c-wrappers r-map]
            (loop [reference (:filter-ref (first c-wrappers))
                   parents (rest c-wrappers)
-                  filtered-map cloud-map]
+                  filtered-map r-map]
                (when-not (empty? parents)
                  (let [{:keys [filter-ref entity-type combo]} (first parents)]
                    (when (zero? (.getSelectedIndex combo))
-                     (let [this-map {entity-type (get (children filtered-map) reference)}]
+                     (let [this-map (record-map entity-type (get (children filtered-map) reference))]
                        (set-value (first parents))
                        (recur filter-ref (rest parents) this-map)))))))
          
          (defn- add-events
            []
-           (let [total (dec (count c-wrappers))]
-             (doseq [idx (range (count c-wrappers))]
-               (let [c-wrapper (nth c-wrappers idx)
-                     {:keys [combo]} c-wrapper]
-                 (add-event! combo "onSelect"
-                   #(let [cloud-map (selected c-wrapper)]
-                      (load-children (subvec c-wrappers idx) cloud-map true)
-                      (set-parents (vec (reverse (subvec c-wrappers (- total idx)))) cloud-map)))))))
+           (let [total (count c-wrappers)]
+             (doseq [idx (range total)]
+               (let [c-wrapper (nth c-wrappers idx)]
+                 (add-event! (:combo c-wrapper) "onSelect"
+                   #(let [record-map (selected c-wrapper)]
+                      (load-children (subvec c-wrappers idx) record-map true)
+                      (set-parents (vec (reverse (subvec c-wrappers (- (dec total) idx)))) record-map)))))))
            
-         ;; POSIBLE CHANGES DUE TO NEW CLOUD-MAP STRUCTURE 
          (defn- getter
            []
-           (let [{:keys [filter-ref entity-type]} (first c-wrappers)] 
+           (let [c-wrapper (first c-wrappers)] 
              (reduce 
-               (fn [[reference cloud-map] c-wrapper]
-                 {entity-type (assoc (children cloud-map) reference (selected c-wrapper))}))
-             [(:filter-ref (first c-wrappers)) (selected (first c-wrappers))]
-             (reverse c-wrappers)))
+               (fn [[reference record-map] c-wrapper]
+                 (assoc-val record-map reference (selected c-wrapper)))
+               [(:filter-ref c-wrapper) (selected c-wrapper)]
+               (reverse c-wrappers))))
          
          (defn- setter
-           [cloud-map]
+           [record-map]
            (reduce
              (fn [[reference cascade-setter filtered-map] c-wrapper]
                (let [{:keys [filter-ref entity-type combo]} c-wrapper
-                     this-map {entity-type (dbg (get (children (dbg filtered-map)) (dbg reference)))}]
+                     this-map (record-map entity-type (get (children filtered-map) reference))]
                  (if (= c-wrapper (first c-wrappers))
                    (do
                      (add-event! combo "onAfterRender"
@@ -377,7 +382,7 @@
                     this-map])))
              [refe
               #() 
-              {{} {refe (children cloud-map)}}]
+              (assoc-val {} refe (children record-map))]
              (reverse c-wrappers)))
                  
          (add-events)
@@ -395,10 +400,10 @@
                (make-wrapper
                  [c-wrapper]
                  #(selected c-wrapper)
-                 (fn [cloud-map]
+                 (fn [record-map]
                    (doto combo 
                      (clear-listeners! "onAfterRender")
-                     (add-event! "onAfterRender" #(set-value c-wrapper cloud-map)))))))
+                     (add-event! "onAfterRender" #(set-value c-wrapper record-map)))))))
            (make-combos maker [(make-c-wrapper refe)]))
          ([maker c-wrappers]
            (let [{:keys [filter-ref entity-type]} (first c-wrappers)]
@@ -410,6 +415,12 @@
                  (load-combo (first c-wrappers) (search-all entity-type))
                  (maker c-wrappers))))))]
       (make-combos))))
+
+(defmethod gen-ref-widget :button [refe scope])
+
+(defmethod gen-ref-widget :checkgroup [refe scope])
+
+(defmethod gen-ref-widget :list [refe sope])
 
 (defn gen-interval-widget [{:keys [att]}]
   (let [from-tuple (gen-att-widget att)
@@ -465,7 +476,7 @@
 (defmethod gen-widget Interval [interval]
   (comp-wrapper (gen-interval-widget interval) (:specs (meta interval))))
 
-(defmethod gen-widget Reference [refe]
+(defmethod gen-widget ::ref-type [refe]
   (let [{:keys [specs scope]} (meta refe)]
     (comp-wrapper (gen-ref-widget refe scope) specs)))
 
@@ -473,15 +484,15 @@
   ([entity-type widgets]
     (reduce
       (fn [widgets [att-ref wrapper]]
-        (assoc widgets
+        (assoc-val widgets
           att-ref
           ((:getter wrapper))))
-      {entity-type {}})
+      (record-map entity-type))
     widgets))
 
 (defn make-widgets
   "Constructs a hash-map with 
-  val -> Attribute | Reference 
+  val -> Attribute | Reference | Interval
   key -> *Widget-wrapper"
   ([order scope]
     (make-widgets order scope (:specs (meta order)) nil nil))
@@ -523,26 +534,20 @@
 (defn make-rows
   [wrappers]
   (reduce 
-    (fn [wrappers wrapper] (concat wrappers (gen-rows wrapper)))   
+    (fn [wrappers wrapper] 
+      (concat wrappers (gen-rows wrapper)))   
     []
     wrappers))
 
 (defn set-widgets-values
-  [widgets cloud-map]
+  [widgets r-map]
   (doseq [[att-ref wrapper] widgets]
     ((:setter wrapper) 
       (if (is-type? att-ref Attribute)
-        (get (children cloud-map) att-ref)
+        (get (children r-map) att-ref)
         (let [rel ((:rel att-ref))]
-          (hash-map ((:to-entity rel))
-            (get (children cloud-map) att-ref)))))))
-
-;{#:temaworks.meta.types.Entity-type{:table-name :city} 
-
-; {#:temaworks.meta.types.Reference{:ref-name State} 
-;  {#:temaworks.meta.types.Attribute{:att-name Name} California}
-
-;  #:temaworks.meta.types.Attribute{:att-name Name} San Francisco}}
+          (record-map ((:to-entity rel))
+            (get (children record-map) att-ref)))))))
 
 (defn gen-quantity-widget
   [{:keys [multi-name]}]

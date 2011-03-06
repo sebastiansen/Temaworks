@@ -9,19 +9,19 @@
     temaworks.handling.prueba)
   (:import [temaworks.meta.types Entity-type Attribute Reference Relationship])
   (:require clojure.set
-    [temaworks.handling.cloudmap :as cloudmap]
+    [temaworks.handling.recordmap :as recordmap]
     [temaworks.handling.db :as db])
   (:refer-clojure
    :exclude [compile distinct drop group-by take sort conj! disj!]))
 
-;; Standardize on usage of cloud-crap within and amongst functions
+;; Standardize on usage of record-crap within and amongst functions
 
 (declare search-with-refs select-by-key select-by-fuzzy-example 
   select-by-exact-example count-query cut-by-paging apply-sorting make-joins)
 
 (defn create
-  [cloud-map & cloud-maps]
-  (try (conj! (cloudmap/cloud-map->table cloud-map) (map #(cloudmap/cloud-map->hack-map %) (conj cloud-maps cloud-map)))
+  [record-map & record-maps]
+  (try (conj! (recordmap/record-map->table record-map) (map #(recordmap/record-map->hack-map %) (conj record-maps record-map)))
     (catch java.sql.SQLException e
       (.getErrorCode e))))
 
@@ -30,48 +30,48 @@
     (let [persist-table  (table db/db table-name)]
       (update-in!
         persist-table 
-        (where (apply and* (for [[k v] (cloudmap/cloud-map->hack-map old-map)] (=* k v))))
+        (where (apply and* (for [[k v] (recordmap/record-map->hack-map old-map)] (=* k v))))
         new-map)))
 
 (defn delete
-  [table-name cloud-map]
+  [table-name record-map]
   (let [persist-table  (table db/db table-name)]
     (try @(disj! 
             persist-table 
-            (where (apply and* (for [[k v] (cloudmap/cloud-map->hack-map cloud-map)] (=* k v)))))
+            (where (apply and* (for [[k v] (recordmap/record-map->hack-map record-map)] (=* k v)))))
       (catch java.sql.SQLException e
         (.getErrorCode e)))))
 
 (defn search-all
   [entity-type]
-  (map #(cloudmap/hack-map->cloud-map entity-type %)
+  (map #(recordmap/hack-map->record-map entity-type %)
     @(table db/db (:table-name entity-type))))
 
 (defn exists?
-  [cloud-map]
+  [record-map]
   (not (nil? @(->
-                (cloudmap/cloud-map->table cloud-map) 
+                (recordmap/record-map->table record-map) 
                 (select-by-exact-example 
-                  (:table-name (cloudmap/root cloud-map))
-                  (cloudmap/cloud-map->hack-map {(cloudmap/root cloud-map) 
-                                                 (cloudmap/select-pks (first cloud-map))}))))))
+                  (:table-name (recordmap/root record-map))
+                  (recordmap/record-map->hack-map {(recordmap/root record-map) 
+                                                 (recordmap/select-pks (first record-map))}))))))
 
 (defn search-with-count
   [query entity-type]
   (vector (count-query query)
-    (map #(cloudmap/hack-map->cloud-map entity-type %) @query)))
+    (map #(recordmap/hack-map->record-map entity-type %) @query)))
 
 (defn search-by-refs
   [query from to]
   (-> (apply 
         select-by-fuzzy-example 
-        (cons query (map cloudmap/cloud-map->hack-map [from to])))
+        (cons query (map recordmap/record-map->hack-map [from to])))
     (make-joins from to)
     (project [:*])))
 
 (defn search-by-key
-  [query cloud-map word]
-  (let [entity-type (cloudmap/root cloud-map)]
+  [query record-map word]
+  (let [entity-type (recordmap/root record-map)]
     (if-let [atts (dorun (filter #(= (:data-type %) String) (:atts entity-type)))]
       (select-by-key
         query
@@ -96,22 +96,22 @@
   ;; criteria
   ;; criteria + refs
   ([from to page per-page sort-field sort-order]
-    (let [criteria-query (-> (cloudmap/cloud-map->table from)
+    (let [criteria-query (-> (recordmap/record-map->table from)
                            ((search-with-criteria page per-page sort-field sort-order)))
-          entity-type (cloudmap/root from)]
+          entity-type (recordmap/root from)]
       
-      (if (empty? (cloudmap/children from))
+      (if (empty? (recordmap/children from))
         (search-with-count criteria-query entity-type)
         (search-with-count (search-with-refs criteria-query from to) entity-type))))
   
   ;; criteria + key
   ;; criteria + key + refs
   ([from to word page per-page sort-field sort-order]
-    (let [key-query (-> (cloudmap/cloud-map->table from)
+    (let [key-query (-> (recordmap/record-map->table from)
                       ((search-with-criteria page per-page sort-field sort-order))
                       (search-by-key from word))
-          entity-type (cloudmap/root from)]
-      (if (empty? (cloudmap/children from))
+          entity-type (recordmap/root from)]
+      (if (empty? (recordmap/children from))
         (search-with-count key-query entity-type)
         (search-with-count (search-with-refs key-query from to) entity-type)))))
 
@@ -158,28 +158,28 @@
     (hash-map
       {:prefix prefix
        :name name
-       :source (cloudmap/root node)}
+       :source (recordmap/root node)}
       (reduce merge 
         (map
           (fn [entry] (make-alias-tree
                         prefix
                         entry))
-          (cloudmap/children node)))))
+          (recordmap/children node)))))
     
   (cond
    ;; Provably wrong
-   (cloudmap/leaf? node)
-   {(cloudmap/root node) (cloudmap/children node)}
+   (recordmap/leaf? node)
+   {(recordmap/root node) (recordmap/children node)}
     
-   (cloudmap/root? node)
+   (recordmap/root? node)
    (make-children
-    (:table-name (cloudmap/root node))
-    (:table-name (cloudmap/root node))
+    (:table-name (recordmap/root node))
+    (:table-name (recordmap/root node))
     node)
    
    :else
    ;; reference
-    (let [reference (cloudmap/root node)]
+    (let [reference (recordmap/root node)]
       (make-children 
        (str prefix "_" (name (:key-name reference)))
        (table-name reference)
@@ -219,9 +219,9 @@
         (map
           (fn [node]
             (op (make-alias destination-node
-                  (:col-name (cloudmap/root node)))
-              (cloudmap/children node)))
-          (filter cloudmap/leaf? (cloudmap/children branch)))))
+                  (:col-name (recordmap/root node)))
+              (recordmap/children node)))
+          (filter recordmap/leaf? (recordmap/children branch)))))
     
     
     (defn- join-values
@@ -263,10 +263,10 @@
                                            source-alias
                                            (alias-mapping child-node)
                                            child-node
-                                           (find to-branch (cloudmap/root child-node)))
+                                           (find to-branch (recordmap/root child-node)))
                                    (alias-mapping child-node)))
                          [query source-alias]
-                         (cloudmap/children from-branch)))))
+                         (recordmap/children from-branch)))))
             (join-branch
               [query source-alias destination-alias from-branch to-branch]
               (join-children

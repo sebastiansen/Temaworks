@@ -55,18 +55,19 @@
       [origin
        destination]   
       true
-      [origin
-       destination
-       (Attribute.
-         "Date" :date  java.util.Date :datebox true true false nil)] 
+      (with-meta 
+        [origin
+         destination
+         (Attribute.
+           "Date" :date  java.util.Date :datebox true true false nil)] {:specs [:constrain]}) 
       [(Attribute.
          "Date" :date  java.util.Date :datebox true true false nil)]
       (with-meta 
-               [origin
-                destination
-                (Interval.
-                  (Attribute.
-                    "Date" :date  java.util.Date :datebox true true false nil))] {:specs [:optional]})
+        [origin
+         destination
+         (Interval.
+           (Attribute.
+             "Date" :date  java.util.Date :datebox true true false nil))] {:specs [:optional]})
       nil
       #(get (val (first %)) 
          (Attribute.

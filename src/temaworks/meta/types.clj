@@ -13,8 +13,7 @@
    in-menu                    ;; Specifies if this entity appear in the global menu
    form-order                 ;; (vector) 
    selector-order             ;; (vector) 
-   search-order               ;; (hashmap) key -> Attribute | Refrence
-                              ;;           val -> true | false (is-interval?) 
+   search-order               ;; (vector) key -> Attribute | Refrence | Interval
    filter-ref                 ;;   
    to-str                     ;; 
    operations                 ;; Global operations :search? :create? :update? :delete?
@@ -22,29 +21,6 @@
    ;; on-create
    ;; on-update
    icon])
-
-(defrecord Reference
-  [ref-name
-   key-name
-   rel
-   direction
-   widget-type
-   mutual-ref
-   ;; computable?
-   ])
-
-(defrecord Attribute
-  [att-name
-   col-name
-   data-type
-   widget-type 
-   pk?
-   not-null?
-   computable?
-   aggregates])
-
-(defrecord Interval
-  [att])
 
 (defrecord Relationship
   [from-entity 
@@ -54,6 +30,38 @@
    card
    fks-pks                    ;; {:fk1 :pk1 :fk2 :pk2 ...}
    mapping-entity])
+
+(defrecord Reference
+  [ref-name
+   key-name
+   rel
+   widget-type
+   mutual-ref
+   computable?])
+
+(defrecord Many-ref
+  [ref-name
+   key-name
+   rel
+   widget-type
+   mutual-ref
+   computable?])
+
+(defrecord Attribute
+  [att-name
+   col-name
+   data-type
+   widget-type
+   pk?
+   not-null?
+   computable?
+   aggregates])
+
+(defrecord Interval
+  [att])
+
+(derive Reference ::ref-type)
+(derive Many-ref ::ref-type)
 
 (def widget-types
   {:textbox "org.zkoss.zul.Textbox"
@@ -65,14 +73,12 @@
    :timebox "org.zkoss.zul.Timebox"
    :radiogroup "org.zkoss.zul.Radiogroup"
    :combobox "org.zkoss.zul.Combobox"
-   :spinner "org.zkoss.zul.Spinner"
-   })
+   :spinner "org.zkoss.zul.Spinner"})
 
 (def input-formats
   {:rut "#.###.###-#"
    :number "#,###,###"
-   :decimal "#.##0,##"
-   })
+   :decimal "#.##0,##"})
 
 (defn is-type? [value datatype] (isa? (type value) datatype))
 
@@ -84,5 +90,4 @@
     (is-type? instance Reference)
     (:table-name ((:to-entity ((:rel instance)))))
     :else
-    nil
-    ))
+    nil))

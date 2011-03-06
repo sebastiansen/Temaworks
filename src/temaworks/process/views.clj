@@ -32,7 +32,7 @@
   (:use 
     [clojure.contrib.seq-utils :only (positions)]
     [clojure.set] 
-    [temaworks.handling aspect crud cloudmap]
+    [temaworks.handling aspect crud recordmap]
     [temaworks.meta types]
     [temaworks.process.patterns])
   (:require temaworks.handling.cloudmap))
@@ -40,15 +40,16 @@
 (load "widgets")
 
 (defmulti to-str class)
-(defmethod to-str Long           [x] (Long/toString x)             )
-(defmethod to-str Integer        [x] (Integer/toString x)          )
-(defmethod to-str Double         [x] (format "%.2f" (double x))    )
-(defmethod to-str Float          [x] (Float/toString x)            )
-(defmethod to-str java.util.Date [x] (format "%1$td-%1$tm-%1$tY" x))
-(defmethod to-str String         [x] x                             )
-(defmethod to-str Boolean        [x] (if x "Sí" "No")              )
-;;CLOUD MAP
-(defmethod to-str :default       [x] (String/valueOf x)            )
+(defmethod to-str Long           [x] (Long/toString x)                                              )
+(defmethod to-str Integer        [x] (Integer/toString x)                                           )
+(defmethod to-str Double         [x] (format "%.2f" (double x))                                     )
+(defmethod to-str Float          [x] (Float/toString x)                                             )
+(defmethod to-str java.util.Date [x] (format "%1$td-%1$tm-%1$tY" x)                                 )
+(defmethod to-str String         [x] x                                                              )
+(defmethod to-str Boolean        [x] (if x "Sí" "No")                                               )
+(defmethod to-str Record-map     [x] ((:to-str (:entity-type x)) x)                                 )
+(defmethod to-str Interval-map   [x] (str "Desde: " (to-str (:from x)) "  Hasta: " (to-str (:to x))))
+(defmethod to-str :default       [x] (String/valueOf x)                                             )
 
 (declare gen-ref-selector gen-form gen-selector gen-bulk-create)
 
@@ -66,7 +67,7 @@
         reference (ref {to-entity {}})
         setter #(dosync 
                   (ref-set reference %)
-                  (.setValue ref-box ((:to-str to-entity) %))
+                  (.setValue ref-box (to-str to-entity) %)
                   (.setDisabled edit-button false))
         box (Hbox.)
         row (Row.)
@@ -107,36 +108,32 @@
               [checkbox box])])))))
 
 (defmethod gen-ref-widget :selector
-  [refe scope cloud-map-ref]
+  [refe scope]
   (let [from-entity ((:from-entity ((:rel refe))))
-        selector (::gen-selector from-entity 
-                   (:mutual-ref refe) 
-                   cloud-map-ref
-                   scope)]
-    (Reference-widget-wrapper.
+        record-map (ref nil)
+        selector-wrapper (ref nil)]
+    (Many-ref-widget-wrapper.
       :selector 
-      [(Label. (str (:ref-name refe) ":"))]
-      [(doto 
-         ;;layout
-         (first selector) 
-         (.setWidth "500px") 
-         (.setHeight "500px"))]
+      []
+      []
       (fn [] )
-      (fn [r] )
+      (fn [r-map] (ref-set record-map r-map))
       (fn [b] )
       (fn [b] )
-      (second selector)
-      (fn []))))
-
-(comment (:selector-form
-            ()
-            :button
-            ()
-            ;; many-to-many
-            :checkgroup
-            ()
-            :list
-            ()))
+      (fn [& args] (apply (second @selector-wrapper) args))
+      (fn 
+        ([] 
+          (multi-append (Row.)
+            [(Label. (str (:ref-name refe) ":"))
+             (doto 
+               (first @(ref-set selector-wrapper (gen-selector from-entity 
+                                           (:mutual-ref refe) 
+                                           @record-map
+                                           scope))) 
+               (.setWidth "500px") 
+               (.setHeight "500px"))]))))))
+    
+(comment (defmethod gen-ref-widget :selector-form ()))
 
 (defn gen-selector
   
@@ -169,7 +166,7 @@
           update-button     (ref nil) 
           table             (ref nil)
           search-panel      (ref nil)
-          cloud-maps        (ref [])
+          record-maps        (ref [])
           widgets           (make-widgets search-order scope reference ref-map)]
       
       (letfn 
@@ -195,7 +192,7 @@
                               (dosync (alter table-state assoc :page (.getActivePage @paging)))
                               (map #(% @table-state) table-state-order))))
                  rows (second result)]
-             (dosync (ref-set cloud-maps rows))
+             (dosync (ref-set record-maps rows))
              (doto (.getModel @table) 
                (.clear)
                (.addAll (reduce
@@ -273,7 +270,7 @@
               (add-event! "onClick"
                 #(apply (:gen-view scope) 
                    (gen-form entity-type 
-                     (nth @cloud-maps (.getSelectedIndex @table)) 
+                     (nth @record-maps (.getSelectedIndex @table)) 
                      scope)))))
           (gen-delete-button
             []
@@ -368,10 +365,10 @@
               [table]
               (.setItemRenderer table 
                 (proxy [ListitemRenderer] []
-                  (render [item cloud-map]
+                  (render [item record-map]
                     (doseq [att-ref (:selector-order entity-type)]
                       (.setParent (Listcell.
-                                    (let [value (get (children cloud-map) att-ref)]
+                                    (let [value (get (children record-map) att-ref)]
                                       (if (nil? value)
                                       ""
                                       (to-str value))))
@@ -395,7 +392,7 @@
                     (do
                       (.setDisabled @update-button false)
                       (when in-ref?
-                        (selection (nth @cloud-maps (.getSelectedIndex %))))))))))
+                        (selection (nth @record-maps (.getSelectedIndex %))))))))))
             
              (cascade-append!
                [(gen-table-head) 
@@ -507,8 +504,8 @@
     (gen-form entity-type {entity-type {}} nil nil scope))
   
   ;;************** On edit **************
-  ([entity-type cloud-map scope]
-    (gen-form entity-type cloud-map nil nil scope))
+  ([entity-type record-map scope]
+    (gen-form entity-type record-map nil nil scope))
   
   ;;************** On create from reference **************
   ([entity-type from-ref ref-map scope]
@@ -518,25 +515,29 @@
     
     (let [referring? (not (nil? from-ref))
           editing? (ref (not (empty? (children from-map))))
-          widgets (make-widgets (:form-order entity-type) scope from-ref ref-map)
-          cloud-map (ref from-map)
+          form-widgets (make-widgets (:form-order entity-type) scope from-ref ref-map)
+          [many-ref-widgets widgets] (split-filter #(is-type? % Many-ref) form-widgets)
+          record-map (ref from-map)
           tab-panel (ref nil)
           tab (ref nil)
-          many-refs-signals (ref nil)
-          save-button (ref nil)]
+          save-button (ref nil)
+          grid (ref nil)]
       (letfn 
         [(make-state
            []
            (dosync
              (doseq [[widget value] {tab-panel (gen-tab-panel)
                                      tab (gen-tab)
-                                     many-refs-signals (make-many-refs-signals)
-                                     save-button (gen-save-button)}]
+                                     save-button (gen-save-button)
+                                     grid (gen-grid (make-rows 
+                                                      (map (if @editing? form-widgets widgets) 
+                                                        (:form-order entity-type))) 
+                                            "15%")}]
                (ref-set widget value))))
       
          (disable-pks
            []
-           (doseq [pk (keys (select-pks @cloud-map))]
+           (doseq [pk (keys (select-pks @record-map))]
              ((:enabler (get widgets pk)) false)))
       
          (set-tab-label!
@@ -546,7 +547,7 @@
              (doto tab
                (.setLabel 
                  (if @editing? 
-                   (str "Editando " (:single-name entity-type) " | " ((:to-str entity-type) @cloud-map)) 
+                   (str "Editando " (:single-name entity-type) " | " ((:to-str entity-type) @record-map)) 
                    (str "Creando " (:single-name entity-type)))))))
          
          (save-form
@@ -563,10 +564,10 @@
              (let [result (throw-result-msg (apply fun params))]
                (when result
                  (let [new-map (if (and (not @editing?) (:auto-inc-pk? entity-type))
-                                 (hack-map->cloud-map (last @result))
-                                 @cloud-map)]
-                   ((scope :signal) (:table-name entity-type) @cloud-map new-map)
-                   (dosync (ref-set cloud-map new-map))
+                                 (hack-map->record-map (last @result))
+                                 @record-map)]
+                   ((scope :signal) (:table-name entity-type) @record-map new-map)
+                   (dosync (ref-set record-map new-map))
                    (set-tab-label!)
                    (when-not @editing?
                      (doseq [sig @many-refs-signals]
@@ -575,28 +576,24 @@
                      ;(disable-pks)
                      )
                    (dosync (ref-set editing? true))))))
-           (let [new-map (assoc @cloud-map entity-type 
-                           (merge (children @cloud-map) (children (make-example entity-type widgets))))]
+           (let [new-map (assoc @record-map entity-type 
+                           (merge (children @record-map) (children (make-example entity-type widgets))))]
              (if @editing?
-               (query update [@cloud-map new-map ])
+               (query update [@record-map new-map ])
                (query create [new-map]))))
-         
-         (make-many-refs-signals
-           []
-           (map (fn [reference wrapper]
-                  (fn []
-                    )) 
-             (filter 
-               (fn [[att-ref wrapper]] 
-                 (and (is-type? att-ref Reference) (= (:widget-type att-ref) :selector)))
-               widgets)))
                 
-         (make-refs-signals
+         (make-ref-signals
            []
            (map :signal 
              (filter 
-               #(is-type? %1 Reference)
+               #(is-type? %1 ::ref-type)
                widgets)))
+         
+         (make-many-ref-rows
+           (let [rows (.getRows @grid)]
+           (doseq [{:keys [setter gen-widget]} many-ref-widgets]
+             (setter @record-map)
+             (multi-append! rows (gen-widget)))))
           
          (gen-save-button
            []
@@ -629,8 +626,8 @@
                    (when @editing? 
                      (if (distinct? (select-keys 
                                       (children (make-example entity-type widgets)) 
-                                      (keys (children @cloud-map)))
-                           (children @cloud-map))
+                                      (keys (children @record-map)))
+                           (children @record-map))
                        (do
                          (.stopPropagation e)
                          (Messagebox/show  
@@ -660,23 +657,24 @@
            (multi-append! (doto (Tabpanel.) (.setHeight "100%"))
              [(gen-form-layout 
                 (gen-menu) 
-                (gen-grid (make-rows (map #(get widgets %) (:form-order entity-type))) "15%"))]))
+                @grid)]))
          
          (signal 
            [table-name new-rec old-rec]
-           (doseq [s (make-refs-signals)]
+           (doseq [s (make-ref-signals)]
              (s table-name new-rec old-rec))
-           (when (= old-rec @cloud-map)
-             (dosync (ref-set cloud-map new-rec))
-             (set-widgets-values widgets @cloud-map)))
+           (when (= old-rec @record-map)
+             (dosync (ref-set record-map new-rec))
+             (set-widgets-values widgets @record-map)))
          
          (on-load
            []  
            (make-state)
            (when @editing?
-             (set-widgets-values widgets @cloud-map)
-             (doseq [signal @many-refs-signals]
-               (signal))
+             (set-widgets-values widgets @record-map)
+             (doseq [setter (map :setter many-ref-widgets)]
+               (setter @record-map))
+             
              ;(disable-pks)
              ))]
         
@@ -686,8 +684,8 @@
       [@tab
        @tab-panel
        signal
-       @cloud-map
-       #(and @editing? (is? @cloud-map %))]))))
+       @record-map
+       #(and @editing? (is? @record-map %))]))))
 
 (defn gen-bulk-create
   
@@ -731,9 +729,7 @@
           [(gen-create-button range-wrapper)]) 
         (gen-grid (make-rows (cons range-wrapper 
                                (vals 
-                                 (map 
-                                   #(get widgets %)
-                                   (:bulk-create-order entity-type))))) "15%")))))
+                                 (map widgets (:bulk-create-order entity-type))))) "15%")))))
   
 (defn gen-ref-selector
   [entity-type setter ref-name page scope]

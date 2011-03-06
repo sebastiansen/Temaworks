@@ -90,6 +90,11 @@
   [dict predicate]
   (select-keys dict (filter predicate (keys dict))))
 
+(defn split-filter
+  [pred coll]
+  [(filter pred coll)
+   (filter (comp not pred) coll)])
+
 (defmacro dbg[x] `(let [x# ~x] (println "dbg:" '~x "=" x#) (println "\tType = " (type x#)) x#))
 
 (defn to-class
