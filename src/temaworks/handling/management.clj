@@ -24,7 +24,7 @@
     temaworks.handling.prueba
     temaworks.handling.crud
     temaworks.handling.aspect
-    temaworks.handling.cloudmap
+    temaworks.handling.recordmap
     [temaworks.process.views :only (gen-selector gen-form)]
     temaworks.meta.authorization))
 
@@ -141,7 +141,7 @@
                         pass-row (Row.)
                         rows (Rows.)
                         menu (Menubar.)
-                        access #(if (exists? (hack-map->cloud-map temaworks-user {:user (.getValue user) :pass (.getValue pass)}))
+                        access #(if (exists? (hack-map->record-map temaworks-user {:user (.getValue user) :pass (.getValue pass)}))
                                   (do
                                     (.detach win)
                                     (load-gui))

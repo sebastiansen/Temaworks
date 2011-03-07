@@ -58,7 +58,7 @@
       (distinct? (keys (select-pks (first value)))
         (filter #(or (and (is-type? % Attribute) (:pk? %)) 
                    (and (is-type? % Reference) (:pk? ((:rel %)))))
-          (concat (:refs (root value)) (:atts (root value)))))))
+          (concat (:refs (:entity-type value)) (:atts (:entity-type value)))))))
   (gen-rows [this]
     (if-let [cbox (:checkbox this)]
       (gen-widget cbox)
@@ -322,7 +322,7 @@
                        new-map (record-map entity-type filter-ref (with-meta (children record-map) {:fuzzy false}))]
                    (when with-cleaning? (clear-listeners! combo "onAfterRender"))
                    (clear-combo c-wrapper)
-                   (load-combo c-wrapper @(make-joins (record-map->table new-map) new-map))
+                   (load-combo c-wrapper (map hack-map->record-map @(make-joins (record-map->table new-map) new-map)))
                    new-map))
                record-map
                (rest c-wrappers))
@@ -418,7 +418,51 @@
 
 (defmethod gen-ref-widget :button [refe scope])
 
-(defmethod gen-ref-widget :checkgroup [refe scope])
+(defmethod gen-ref-widget :checkgroup [refe scope]
+  (let [rel ((:rel refe))
+        mapping-entity ((:to-entity rel))
+        mapping-rel ((:mapping-rel  rel))
+        from-ref (:from-ref mapping-rel)
+        to-ref (:to-ref mapping-rel)
+        rec-map (ref nil)]
+    (defn- gen-checkgroup [from-map]
+      (let [example-map (record-map mapping-entity from-ref from-map)
+            mapping-maps (map hack-map->record-map @(make-joins (record-map->table example-map) example-map))
+            check-map (ref (reduce 
+                             (fn [check-map to-map]
+                               (let [mapped-val (first (filter #(is? to-map (get (children %) to-ref)) mapping-maps))]
+                                 (assoc check-map
+                                   (doto (Checkbox. (to-str to-map))
+                                     (.setChecked (not (nil? mapped-val))))
+                                   [to-map mapped-val])))
+                             {}
+                             (search-all ((:to-entity ((:rel to-ref)))))))]
+        (doseq [checkbox (vals @check-map)]
+          (add-event! checkbox "onCheck"
+            #(if (.isChecked checkbox)
+               (let [[to-map mapped-val] (@check-map checkbox)
+                     new-val (assoc-val (record-map mapping-entity from-ref from-map) to-ref to-map)]
+                 (create new-val)
+                 (dosync (assoc checkbox [to-map new-val]))
+               (let [[to-map old-val] (@check-map checkbox)]
+                 (delete old-val)
+                 (dosync (assoc checkbox [to-map nil])))))))
+        (multi-append! (Vlayout.) (vals @check-map))))
+    
+    (Many-ref-widget-wrapper.
+      :selector 
+      []
+      []
+      (fn [] )
+      (fn [r-map] (dosync (ref-set rec-map r-map)))
+      (fn [b] )
+      (fn [b] )
+      (fn [t n o])
+      (fn 
+        ([] 
+          (multi-append! (Row.)
+            [(Label. (str (:ref-name refe) ":"))
+             (gen-checkgroup @rec-map)]))))))
 
 (defmethod gen-ref-widget :list [refe sope])
 

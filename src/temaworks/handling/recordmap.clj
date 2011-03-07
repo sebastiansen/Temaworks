@@ -6,7 +6,7 @@
     temaworks.handling.prueba
     temaworks.handling.aspect
     temaworks.meta.types)
-  (:import [temaworks.meta.types Entity-type Attribute Reference Relationship])
+  (:import [temaworks.meta.types Entity-type Attribute Interval Reference Relationship])
   (:require [temaworks.handling.db :as db])
   (:refer-clojure
    :exclude [compile distinct drop group-by take sort conj! disj!]))
@@ -23,13 +23,13 @@
 ;; values -> keys:    Attribute     | Reference  | Many-ref     | Interval
 ;;           vals: java.lang.Object | Record-map | Many-ref-seq | Interval-map
 
-(record-map
+(defn record-map
   ([entity-type]
     (Record-map. entity-type {}))
   ([entity-type values]
     (Record-map. entity-type values))
-  ([entiy-type tag children]
-    (Record-map entity-type {tag children})))
+  ([entity-type tag children]
+    (Record-map. entity-type {tag children})))
 
 (defn assoc-val
   [{:keys [entity-type values]} att-ref value]

@@ -30,15 +30,15 @@
     (let [persist-table  (table db/db table-name)]
       (update-in!
         persist-table 
-        (where (apply and* (for [[k v] (recordmap/record-map->hack-map old-map)] (=* k v))))
+        (where (reduce and* (for [[k v] (recordmap/record-map->hack-map old-map)] (=* k v))))
         new-map)))
 
 (defn delete
-  [table-name record-map]
+  [record-map]
   (let [persist-table  (table db/db table-name)]
     (try @(disj! 
             persist-table 
-            (where (apply and* (for [[k v] (recordmap/record-map->hack-map record-map)] (=* k v)))))
+            (where (reduce and* (for [[k v] (recordmap/record-map->hack-map record-map)] (=* k v)))))
       (catch java.sql.SQLException e
         (.getErrorCode e)))))
 
@@ -52,9 +52,10 @@
   (not (nil? @(->
                 (recordmap/record-map->table record-map) 
                 (select-by-exact-example 
-                  (:table-name (recordmap/root record-map))
-                  (recordmap/record-map->hack-map {(recordmap/root record-map) 
-                                                 (recordmap/select-pks (first record-map))}))))))
+                  (:table-name (:entity-type record-map))
+                  (recordmap/record-map->hack-map 
+                    {(:entity-type record-map) 
+                     (recordmap/select-pks (first record-map))}))))))
 
 (defn search-with-count
   [query entity-type]
@@ -71,7 +72,7 @@
 
 (defn search-by-key
   [query record-map word]
-  (let [entity-type (recordmap/root record-map)]
+  (let [entity-type (:entity-type record-map)]
     (if-let [atts (dorun (filter #(= (:data-type %) String) (:atts entity-type)))]
       (select-by-key
         query
@@ -98,7 +99,7 @@
   ([from to page per-page sort-field sort-order]
     (let [criteria-query (-> (recordmap/record-map->table from)
                            ((search-with-criteria page per-page sort-field sort-order)))
-          entity-type (recordmap/root from)]
+          entity-type (:entity-type from)]
       
       (if (empty? (recordmap/children from))
         (search-with-count criteria-query entity-type)
@@ -110,7 +111,7 @@
     (let [key-query (-> (recordmap/record-map->table from)
                       ((search-with-criteria page per-page sort-field sort-order))
                       (search-by-key from word))
-          entity-type (recordmap/root from)]
+          entity-type (:entity-type from)]
       (if (empty? (recordmap/children from))
         (search-with-count key-query entity-type)
         (search-with-count (search-with-refs key-query from to) entity-type)))))
@@ -158,7 +159,7 @@
     (hash-map
       {:prefix prefix
        :name name
-       :source (recordmap/root node)}
+       :source (:entity-type node)}
       (reduce merge 
         (map
           (fn [entry] (make-alias-tree
@@ -168,18 +169,18 @@
     
   (cond
    ;; Provably wrong
-   (recordmap/leaf? node)
-   {(recordmap/root node) (recordmap/children node)}
+   true
+   {(:entity-type node) (recordmap/children node)}
     
-   (recordmap/root? node)
+   true
    (make-children
-    (:table-name (recordmap/root node))
-    (:table-name (recordmap/root node))
+    (:table-name (:entity-type node))
+    (:table-name (:entity-type node))
     node)
    
    :else
    ;; reference
-    (let [reference (recordmap/root node)]
+    (let [reference (:entity-type node)]
       (make-children 
        (str prefix "_" (name (:key-name reference)))
        (table-name reference)
@@ -219,7 +220,7 @@
         (map
           (fn [node]
             (op (make-alias destination-node
-                  (:col-name (recordmap/root node)))
+                  (:col-name (:entity-type node)))
               (recordmap/children node)))
           (filter recordmap/leaf? (recordmap/children branch)))))
     
@@ -263,7 +264,7 @@
                                            source-alias
                                            (alias-mapping child-node)
                                            child-node
-                                           (find to-branch (recordmap/root child-node)))
+                                           (find to-branch (:entity-type child-node)))
                                    (alias-mapping child-node)))
                          [query source-alias]
                          (recordmap/children from-branch)))))

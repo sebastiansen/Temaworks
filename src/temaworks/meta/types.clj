@@ -13,7 +13,7 @@
    in-menu                    ;; Specifies if this entity appear in the global menu
    form-order                 ;; (vector) 
    selector-order             ;; (vector) 
-   search-order               ;; (vector) key -> Attribute | Refrence | Interval
+   search-order               ;; (vector)
    filter-ref                 ;;   
    to-str                     ;; 
    operations                 ;; Global operations :search? :create? :update? :delete?
@@ -28,8 +28,12 @@
    pk?
    not-null?
    card
-   fks-pks                    ;; {:fk1 :pk1 :fk2 :pk2 ...}
-   mapping-entity])
+   fks-pks
+   mapping-rel])
+
+(defrecord Mapping-rel
+  [from-ref
+   to-ref])
 
 (defrecord Reference
   [ref-name

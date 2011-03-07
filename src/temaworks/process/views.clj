@@ -28,28 +28,15 @@
     (org.zkoss.zk.ui.event EventListener Event Events InputEvent)
     (org.zkoss.zk.ui WrongValueException Executions)
     (org.zkoss.util.resource Labels)
-    [temaworks.meta.types Entity-type Attribute Reference Relationship Interval])
+    [temaworks.meta.types Entity-type Attribute Reference Relationship Interval Many-ref])
   (:use 
     [clojure.contrib.seq-utils :only (positions)]
     [clojure.set] 
     [temaworks.handling aspect crud recordmap]
     [temaworks.meta types]
-    [temaworks.process.patterns])
-  (:require temaworks.handling.cloudmap))
+    [temaworks.process.patterns]))
 
 (load "widgets")
-
-(defmulti to-str class)
-(defmethod to-str Long           [x] (Long/toString x)                                              )
-(defmethod to-str Integer        [x] (Integer/toString x)                                           )
-(defmethod to-str Double         [x] (format "%.2f" (double x))                                     )
-(defmethod to-str Float          [x] (Float/toString x)                                             )
-(defmethod to-str java.util.Date [x] (format "%1$td-%1$tm-%1$tY" x)                                 )
-(defmethod to-str String         [x] x                                                              )
-(defmethod to-str Boolean        [x] (if x "Sí" "No")                                               )
-(defmethod to-str Record-map     [x] ((:to-str (:entity-type x)) x)                                 )
-(defmethod to-str Interval-map   [x] (str "Desde: " (to-str (:from x)) "  Hasta: " (to-str (:to x))))
-(defmethod to-str :default       [x] (String/valueOf x)                                             )
 
 (declare gen-ref-selector gen-form gen-selector gen-bulk-create)
 
@@ -117,22 +104,22 @@
       []
       []
       (fn [] )
-      (fn [r-map] (ref-set record-map r-map))
+      (fn [r-map] (dosync (ref-set record-map r-map)))
       (fn [b] )
       (fn [b] )
       (fn [& args] (apply (second @selector-wrapper) args))
       (fn 
         ([] 
-          (multi-append (Row.)
+          (multi-append! (Row.)
             [(Label. (str (:ref-name refe) ":"))
              (doto 
-               (first @(ref-set selector-wrapper (gen-selector from-entity 
-                                           (:mutual-ref refe) 
-                                           @record-map
-                                           scope))) 
+               (first (dosync @(ref-set selector-wrapper (gen-selector from-entity 
+                                                           (:mutual-ref refe) 
+                                                           @record-map
+                                                           scope)))) 
                (.setWidth "500px") 
                (.setHeight "500px"))]))))))
-    
+
 (comment (defmethod gen-ref-widget :selector-form ()))
 
 (defn gen-selector
@@ -158,15 +145,15 @@
           table-state       (ref {:page 0 :per-page 30 :sort-field nil :sort-order nil})
           criteria-order    [:from-example :to-example :key-search]
           criteria          (ref {:from-example (if list-selector? 
-                                                  (assoc-ref {entity-type {}} reference ref-map)  
-                                                  {entity-type {}}) 
-                                  :to-example   {entity-type {}} 
+                                                  (record-map entity-type reference ref-map)  
+                                                  (record-map entity-type)) 
+                                  :to-example   (record-map entity-type) 
                                   :key-search   nil})
           paging            (ref nil)
           update-button     (ref nil) 
           table             (ref nil)
           search-panel      (ref nil)
-          record-maps        (ref [])
+          record-maps       (ref [])
           widgets           (make-widgets search-order scope reference ref-map)]
       
       (letfn 
@@ -490,12 +477,6 @@
           [(gen-tab)  
            (gen-tab-panel)
            signal])))))
-
-(defrecord Form-state
-  [tab-panel
-   tab
-   many-refs-signals
-   gen-save-button])
   
 (defn gen-form
   
@@ -513,7 +494,7 @@
   
   ([entity-type from-map from-ref ref-map scope]
     
-    (let [referring? (not (nil? from-ref))
+  (let [referring? (not (nil? from-ref))
           editing? (ref (not (empty? (children from-map))))
           form-widgets (make-widgets (:form-order entity-type) scope from-ref ref-map)
           [many-ref-widgets widgets] (split-filter #(is-type? % Many-ref) form-widgets)
@@ -522,6 +503,7 @@
           tab (ref nil)
           save-button (ref nil)
           grid (ref nil)]
+      
       (letfn 
         [(make-state
            []
@@ -570,8 +552,7 @@
                    (dosync (ref-set record-map new-map))
                    (set-tab-label!)
                    (when-not @editing?
-                     (doseq [sig @many-refs-signals]
-                       (sig))
+                     (make-many-ref-rows)
                      (.setLabel @save-button "Guardar cambios")
                      ;(disable-pks)
                      )
@@ -586,14 +567,15 @@
            []
            (map :signal 
              (filter 
-               #(is-type? %1 ::ref-type)
+               #(is-type? %1 :ref-type)
                widgets)))
          
          (make-many-ref-rows
+           []
            (let [rows (.getRows @grid)]
-           (doseq [{:keys [setter gen-widget]} many-ref-widgets]
-             (setter @record-map)
-             (multi-append! rows (gen-widget)))))
+             (doseq [{:keys [setter gen-widget]} many-ref-widgets]
+               (setter @record-map)
+               (multi-append! rows (gen-widget)))))
           
          (gen-save-button
            []
@@ -672,9 +654,7 @@
            (make-state)
            (when @editing?
              (set-widgets-values widgets @record-map)
-             (doseq [setter (map :setter many-ref-widgets)]
-               (setter @record-map))
-             
+             (make-many-ref-rows)
              ;(disable-pks)
              ))]
         
