@@ -39,9 +39,11 @@
   [ref-name
    key-name
    rel
+   dir
    widget-type
    mutual-ref
-   computable?])
+   ;computable?
+   ])
 
 (defrecord Many-ref
   [ref-name
@@ -64,9 +66,6 @@
 (defrecord Interval
   [att])
 
-(derive Reference ::ref-type)
-(derive Many-ref ::ref-type)
-
 (def widget-types
   {:textbox "org.zkoss.zul.Textbox"
    :intbox "org.zkoss.zul.Intbox"
@@ -77,7 +76,8 @@
    :timebox "org.zkoss.zul.Timebox"
    :radiogroup "org.zkoss.zul.Radiogroup"
    :combobox "org.zkoss.zul.Combobox"
-   :spinner "org.zkoss.zul.Spinner"})
+   :spinner "org.zkoss.zul.Spinner"
+   :filebox "org.zkoss.zul.Hbox"})
 
 (def input-formats
   {:rut "#.###.###-#"

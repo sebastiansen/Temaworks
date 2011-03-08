@@ -6,6 +6,8 @@
   (:import (org.zkoss.zk.ui.event
              EventListener)))
 
+(defmacro dbg[x] `(let [x# ~x] (println "dbg:" '~x "=" x#) (println "\tType = " (type x#)) x#))
+
 (defn add-event!
   [widget event-type event]
   (.addEventListener widget 
@@ -94,8 +96,6 @@
   [pred coll]
   [(filter pred coll)
    (filter (comp not pred) coll)])
-
-(defmacro dbg[x] `(let [x# ~x] (println "dbg:" '~x "=" x#) (println "\tType = " (type x#)) x#))
 
 (defn to-class
   [s & args]

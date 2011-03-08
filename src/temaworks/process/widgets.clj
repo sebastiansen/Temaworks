@@ -33,10 +33,10 @@
 (defn gen-rows-helper
   [{:keys [checkbox label]} widget]
   [(multi-append! (Row.)
-      [(if checkbox
-           checkbox
-                label)
-                widget])])
+     [(if checkbox
+        checkbox
+        label)
+      widget])])
 
 (defrecord Attribute-widget-wrapper [widget-type label widget getter setter enabler unlocker]
   Widget-wrapper
@@ -140,76 +140,73 @@
 
 (defmethod gen-att-widget :datetime [att])
   
-(comment 
 (defmethod gen-att-widget :radiogroup [att]
-  (let [{:keys [widget]} (gen-generic-att att)] 
-    (.setOrient widget (:orient (:aggregates att)))
-    (doseq [x (:options (:aggregates att))] 
-      (cascade-append! [(Radio. x) widget]))
-    
-      widget
-      #(if (nil? (.getSelectedItem widget))        
-         nil
-         (.. widget getSelectedItem get (make-att-label att)))
-      #(.setSelectedItem widget (first 
-                                  (filter (fn [x] (= (.get(make-att-label att) x) %))
-                                    (.getItems widget))))
-      #(doseq [x (.getItems widget)] 
-         (.setDisabled x (not %)))
-      #(doseq [x (.getItems widget)] 
-         (.setDisabled x (not %)))))
+  (let [wrapper (gen-generic-att att)
+        {:keys [label widget]} wrapper
+        aggs (:aggregates att)]
+    (.setOrient widget (:orient aggs))
+    (multi-append! widget (map #(Radio. %) (:options aggs)))
+    (merge wrapper
+     {:getter   #(if (nil? (.getSelectedItem widget))        
+                   nil
+                   (.. widget getSelectedItem getLabel))
+      :setter   #(.setSelectedItem widget 
+                   (first 
+                     (filter (fn [x] (= (.getLabel x) %))
+                       (.getItems widget))))
+      :enabler  #(doseq [x (.getItems widget)] 
+                   (.setDisabled x (not %)))
+      :unlocker #(doseq [x (.getItems widget)] 
+                   (.setDisabled x (not %)))})))
 
 (defmethod gen-att-widget :combobox [att]
-  (let [widget (gen-generic-att att)]
-    (.appendItem widget "Seleccionar...")
+  (let [wrapper (gen-generic-att att)
+        widget (:widget wrapper)]
     (doseq [x (:options (:aggregates att))] 
       (.appendItem widget x))
-    (.setReadonly widget true)
-    (.setSelectedIndex widget 0)
-    (Attribute-widget-wrapper.
-      (:widget-type att)
-      (make-att-label att)
-      widget
-      #(if (zero? (.getSelectedIndex widget))
-          nil
-          (.getValue widget))
-      #(.setValue widget %)
-      #(.setDisabled widget (not %))
-      #(.setButtonVisible widget %))))
-
-(defmethod gen-att-widget :checkbox [att]
-  (let [widget (gen-basic-att att)]
-    (Attribute-widget-wrapper.
-      (:widget-type att)
-      (make-att-label att)
-      widget
-      #(.isChecked widget)
-      #(.setChecked widget %)
-      #(.setDisabled widget (not %))
-      #(.setDisabled widget (not %)))))
+    (doto widget 
+      (.appendItem "Seleccionar...")
+      (.setReadonly true)
+      (.setSelectedIndex 0))
+    (merge wrapper
+      {:getter   #(if (zero? (.getSelectedIndex widget))
+                    nil
+                    (.getValue widget))
+       :setter   #(.setValue widget %)
+       :enabler  #(.setDisabled widget (not %))
+       :unlocker #(.setButtonVisible widget %)})))
   
-(defmethod gen-att-widget :file [att]
-  (let [box (Hbox.)
-        file-box (doto (Textbox.) (.setReadonly true))
-        up-button (Button. "Examinar...")
-        down-button (Button. "Descargar")
-        remove-button (Button. "Eliminar")
-        file (ref nil)]
-    (cascade-append!
-      [up-button box]
-      [down-button box]
-      [remove-button box])
-    ;; TODO: getter, setter
-    
-     
-    (Attribute-widget-wrapper.
-      (:widget-type att)
-      (make-att-label att)
-      box
-      (fn [] ())
-      (fn [] ())
-      #()
-      #(.setReadonly up-button (not %))))))
+(defmethod gen-att-widget :checkbox [att]
+  (let [wrapper (gen-basic-att att)
+        widget (:widget wrapper)]
+    (merge wrapper
+      {:getter   #(.isChecked widget)
+       :setter   #(.setChecked widget %)
+       :enabler  #(.setDisabled widget (not %))
+       :unlocker #(.setDisabled widget (not %))})))
+  
+(defmethod gen-att-widget :filebox [att]
+  (let [wrapper (gen-basic-att att)
+        media (ref nil)
+        file-name (doto (Textbox.) (.setReadonly true))
+        down-button (doto (Button. "Descargar") (.setDisabled true) (add-event! "onClick" #(Filedownload/save @media)))
+        setter (fn [media-val media-name down-disabled?]
+                 (dosync (ref-set media media-val))
+                 (.setValue file-name media-name)
+                 (.setDisabled down-button down-disabled?))
+        up-button (doto (Button. "Examinar...") (.setUpload "true")
+                    (.addEventListener "onUpload"
+                      (proxy [EventListener][]
+                        (onEvent [e]
+                          (setter (.getMedia e) (.getName @media) false)))))
+        remove-button (doto (Button. "Vaciar") (add-event! "onClick" #(setter nil nil true)))]
+    (multi-append! (:widget wrapper)
+      [file-name up-button down-button remove-button])
+    (merge wrapper
+      {:getter (fn [] @media)
+       :setter (fn [media] (setter media (if media (.getName media)) false))
+       :enabler #()
+       :unlocker #(.setReadonly up-button (not %))})))
 
 (defmulti gen-ref-widget (fn [refe scope] (:widget-type refe)))
 
@@ -297,7 +294,7 @@
              #(do (.add %1 %2) %1)
              (ArrayList.)
              (conj 
-               (map #((:to-str entity-type) %) record-maps)
+               (map #(to-str %) record-maps)
                "Seleccionar..."))))
   
        (selected [{:keys [entity-type combo model]}]
@@ -314,17 +311,17 @@
          [c-wrappers]
          
          (defn- load-children
-           [c-wrappers record-map with-cleaning?]
-           (if-not (empty? (children record-map))
+           [c-wrappers r-map with-cleaning?]
+           (if-not (empty? (children r-map))
              (reduce 
-               (fn [record-map c-wrapper]
+               (fn [r-map c-wrapper]
                  (let [{:keys [filter-ref entity-type combo]} c-wrapper
-                       new-map (record-map entity-type filter-ref (with-meta (children record-map) {:fuzzy false}))]
+                       new-map (record-map entity-type filter-ref (with-meta (children r-map) {:fuzzy false}))]
                    (when with-cleaning? (clear-listeners! combo "onAfterRender"))
                    (clear-combo c-wrapper)
                    (load-combo c-wrapper (map hack-map->record-map @(make-joins (record-map->table new-map) new-map)))
                    new-map))
-               record-map
+               r-map
                (rest c-wrappers))
              (doseq [{:keys [combo]} (rest c-wrappers)]
                (.setSelectedIndex combo 0))))
@@ -362,29 +359,31 @@
          
          (defn- setter
            [record-map]
-           (reduce
-             (fn [[reference cascade-setter filtered-map] c-wrapper]
-               (let [{:keys [filter-ref entity-type combo]} c-wrapper
-                     this-map (record-map entity-type (get (children filtered-map) reference))]
-                 (if (= c-wrapper (first c-wrappers))
-                   (do
-                     (add-event! combo "onAfterRender"
-                       (fn [] (do
-                                (set-value c-wrapper this-map)
-                                (load-children c-wrappers this-map false)
-                                (cascade-setter))))
-                     [reference setter filtered-map])
-                   [filter-ref
-                    #(add-event! combo "onAfterRender"
-                       (fn [] (do
-                                (set-value c-wrapper this-map)
-                                (cascade-setter))))
-                    this-map])))
-             [refe
-              #() 
-              (assoc-val {} refe (children record-map))]
-             (reverse c-wrappers)))
-                 
+           (if (nil? record-map)
+             (load-children c-wrappers (record-map (:entity-type (first c-wrappers))) false)
+             (reduce
+               (fn [[reference cascade-setter filtered-map] c-wrapper]
+                 (let [{:keys [filter-ref entity-type combo]} c-wrapper
+                       this-map (record-map entity-type (get (children filtered-map) reference))]
+                   (if (= c-wrapper (first c-wrappers))
+                     (do
+                       (add-event! combo "onAfterRender"
+                         (fn [] (do
+                                  (set-value c-wrapper this-map)
+                                  (load-children c-wrappers this-map false)
+                                  (cascade-setter))))
+                       [reference setter filtered-map])
+                     [filter-ref
+                      #(add-event! combo "onAfterRender"
+                         (fn [] (do
+                                  (set-value c-wrapper this-map)
+                                  (cascade-setter))))
+                      this-map])))
+               [refe
+                #() 
+                (assoc-val {} refe (children record-map))]
+               (reverse c-wrappers))))
+         
          (add-events)
          (make-wrapper
            c-wrappers
@@ -420,7 +419,7 @@
 
 (defmethod gen-ref-widget :checkgroup [refe scope]
   (let [rel ((:rel refe))
-        mapping-entity ((:to-entity rel))
+        mapping-entity ((:from-entity rel))
         mapping-rel ((:mapping-rel  rel))
         from-ref (:from-ref mapping-rel)
         to-ref (:to-ref mapping-rel)
@@ -502,7 +501,7 @@
 
 (def specs-map 
   {:optional turn-optional-widget
-   :contrain constrain-widget})
+   :constrain constrain-widget})
 
 (defn comp-wrapper
   [wrapper specs]
@@ -510,9 +509,12 @@
     wrapper
     ((apply comp (map specs-map specs)) wrapper)))
 
+(derive Reference ::ref-type)
+(derive Many-ref ::ref-type)
+
 (defmulti gen-widget
   "Constructs a new widget wrapper from an Attribute, Reference or Interval instance."
-   type)
+   class)
 
 (defmethod gen-widget Attribute [att]
   (comp-wrapper (gen-att-widget att) (:specs (meta att))))
@@ -536,8 +538,8 @@
 
 (defn make-widgets
   "Constructs a hash-map with 
-  val -> Attribute | Reference | Interval
-  key -> *Widget-wrapper"
+   val -> Attribute | Reference | Interval
+   key -> *Widget-wrapper"
   ([order scope]
     (make-widgets order scope (:specs (meta order)) nil nil))
   
@@ -608,9 +610,10 @@
 (defn restart-widgets
   [wrappers]
   (doseq [wrapper wrappers]
-    (.setChecked (:checkbox wrapper) false)
-    (if (is-type? wrapper Interval-widget-wrapper)
-      (do ((:enabler wrapper) false 2)
-        ((:setter wrapper) nil 2))
-      (do ((:enabler wrapper) false)
-        ((:setter wrapper) nil)))))
+    (let [{:keys [checkbox enabler]} wrapper]
+      (.setChecked checkbox false)
+      (if (is-type? wrapper Interval-widget-wrapper)
+        (do (enabler false 2)
+          (setter nil 2))
+        (do (enabler false)
+          (setter nil))))))

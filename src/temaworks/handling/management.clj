@@ -164,6 +164,6 @@
                     ;(.setHflex form "min")
                     ))]
           (.setTitle page app-name)
-          (launch-sign-in)
-          ;(load-gui)
+          ;(launch-sign-in)
+          (load-gui)
           )))))

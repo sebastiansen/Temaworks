@@ -1,11 +1,11 @@
-(ns temaworks.process.views 
-  (:import 
+(ns temaworks.process.views
+  (:import
     (org.zkoss.zul
       Window
       Groupbox
       Bandbox
       Listbox Listhead Listheader Listitem
-      Paging           
+      Paging
       Panel Panelchildren
       Vbox Hbox Vlayout Hlayout
       Borderlayout Center West North South
@@ -23,13 +23,15 @@
       SimpleListModel
       ListModelList
       ListitemRenderer
-      Space)
-    (java.util ArrayList) 
+      Space
+      Filedownload)
+    (java.util ArrayList)
     (org.zkoss.zk.ui.event EventListener Event Events InputEvent)
     (org.zkoss.zk.ui WrongValueException Executions)
     (org.zkoss.util.resource Labels)
+    (org.zkoss.util.media Media)
     [temaworks.meta.types Entity-type Attribute Reference Relationship Interval Many-ref])
-  (:use 
+  (:use
     [clojure.contrib.seq-utils :only (positions)]
     [clojure.set] 
     [temaworks.handling aspect crud recordmap]
@@ -54,7 +56,7 @@
         reference (ref {to-entity {}})
         setter #(dosync 
                   (ref-set reference %)
-                  (.setValue ref-box (to-str to-entity) %)
+                  (.setValue ref-box (to-str %))
                   (.setDisabled edit-button false))
         box (Hbox.)
         row (Row.)
@@ -497,7 +499,7 @@
   (let [referring? (not (nil? from-ref))
           editing? (ref (not (empty? (children from-map))))
           form-widgets (make-widgets (:form-order entity-type) scope from-ref ref-map)
-          [many-ref-widgets widgets] (split-filter #(is-type? % Many-ref) form-widgets)
+          [many-ref-widgets widgets] (map #(reduce merge {} %) (split-filter #(is-type? (key %) Many-ref) form-widgets))
           record-map (ref from-map)
           tab-panel (ref nil)
           tab (ref nil)
@@ -508,13 +510,14 @@
         [(make-state
            []
            (dosync
-             (doseq [[widget value] {tab-panel (gen-tab-panel)
-                                     tab (gen-tab)
-                                     save-button (gen-save-button)
-                                     grid (gen-grid (make-rows 
-                                                      (map (if @editing? form-widgets widgets) 
-                                                        (:form-order entity-type))) 
-                                            "15%")}]
+             (ref-set grid (gen-grid (make-rows 
+                                       (map (if @editing? form-widgets widgets) 
+                                         (:form-order entity-type)))
+                             "15%")) 
+             (doseq [[widget value] (array-map
+                                      tab-panel (gen-tab-panel)
+                                      tab (gen-tab)
+                                      save-button (gen-save-button))]
                (ref-set widget value))))
       
          (disable-pks
@@ -567,12 +570,12 @@
            []
            (map :signal 
              (filter 
-               #(is-type? %1 :ref-type)
+               #(is-type? %1 ::ref-type)
                widgets)))
          
          (make-many-ref-rows
            []
-           (let [rows (.getRows @grid)]
+           (let [rows (.getRows (dbg @grid))]
              (doseq [{:keys [setter gen-widget]} many-ref-widgets]
                (setter @record-map)
                (multi-append! rows (gen-widget)))))
@@ -639,7 +642,7 @@
            (multi-append! (doto (Tabpanel.) (.setHeight "100%"))
              [(gen-form-layout 
                 (gen-menu) 
-                @grid)]))
+                (dbg @grid))]))
          
          (signal 
            [table-name new-rec old-rec]
@@ -654,6 +657,7 @@
            (make-state)
            (when @editing?
              (set-widgets-values widgets @record-map)
+             (pr "qwertyuiiuytre")
              (make-many-ref-rows)
              ;(disable-pks)
              ))]

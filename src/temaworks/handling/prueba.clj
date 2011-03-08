@@ -59,7 +59,9 @@
         [origin
          destination
          (Attribute.
-           "Date" :date  java.util.Date :datebox true true false nil)] {:specs [:constrain]}) 
+           "Date" :date  java.util.Date :datebox true true false nil)
+         (Attribute.
+           "File" :file java.util.Date :filebox true true false nil)] {:specs [:constrain]}) 
       [(Attribute.
          "Date" :date  java.util.Date :datebox true true false nil)]
       (with-meta 
@@ -69,7 +71,7 @@
            (Attribute.
              "Date" :date  java.util.Date :datebox true true false nil))] {:specs [:optional]})
       nil
-      #(get (val (first %)) 
+      #(get (:values %) 
          (Attribute.
            "Date" :date  java.util.Date :datebox true true false nil))
       nil
@@ -98,7 +100,7 @@
       "Name" :name String :textbox true true false nil)]
       []
       stato
-      #(get (val (first %)) 
+      #(get (:values %) 
          (Attribute.
            "Name" :name String :textbox true true false nil))
       nil
@@ -119,8 +121,8 @@
      []
      []
      nil
-     #(get (val (first %)) (Attribute.
-                             "Name" :name String :textbox true true false nil))
+     #(get (:values %) (Attribute.
+                         "Name" :name String :textbox true true false nil))
      nil
      false
      :group))
