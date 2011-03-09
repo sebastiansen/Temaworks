@@ -4,35 +4,93 @@
     clojureql.internal
     clojureql.predicates
     clojure.contrib.sql
+    clj-time.core
     temaworks.meta.types
     temaworks.handling.aspect
-    temaworks.handling.prueba)
-  (:import [temaworks.meta.types Entity-type Attribute Reference Relationship])
+    temaworks.handling.prueba
+    clojure.contrib.io)
+  (:import [temaworks.meta.types Entity-type Attribute Reference Relationship]
+    (org.zkoss.util.media Media AMedia))
   (:require clojure.set
     [temaworks.handling.recordmap :as recordmap]
     [temaworks.handling.db :as db])
   (:refer-clojure
-   :exclude [compile distinct drop group-by take sort conj! disj!]))
+   :exclude [spit extend compile distinct drop group-by take sort conj! disj!]))
 
 ;; Standardize on usage of record-crap within and amongst functions
 
 (declare search-with-refs select-by-key select-by-fuzzy-example 
   select-by-exact-example count-query cut-by-paging apply-sorting make-joins)
 
+(defn file-atts
+  [record-map]
+  (reduce merge
+    {}
+    (filter 
+      (fn [[att-ref value]]
+        (and 
+          (is-type? att-ref Attribute) 
+          (= (:data-type att-ref) org.zkoss.util.media.Media) 
+          value))
+      record-map)))
+
+(defn save-file
+  [media file-att entity-type]
+  (let [path (str *files-path*
+               (:single-name entity-type) "/" (:att-name file-att) "/"
+               (milli now) (.getName media))]
+    (with-open [f (file path)]
+      (make-parents f)
+      (copy (.getStreamData media) f))
+    (with-meta media {:path path})))
+
+(defn remove-file
+  [path]
+  (with-open [f (file path)]
+    (delete-file f)))
+
+(defn save-files
+  [record-maps]
+  (reduce 
+    (fn [record-maps r-map]
+      (conj record-maps
+        (reduce 
+          (fn [record-map [file-att media]]
+              (recordmap/assoc-val record-map file-att (save-file media file-att (:entity-type record-map))))
+          r-map
+          (file-atts r-map))))
+    []
+    record-maps))
+
+(defn delete-files
+  [record-maps]
+  (doseq [r-map record-maps]
+    (doseq [[file-att media] (file-atts r-map)]
+      (remove-file (:path (meta media))))))
+
 (defn create
   [record-map & record-maps]
-  (try (conj! (recordmap/record-map->table record-map) (map #(recordmap/record-map->hack-map %) (conj record-maps record-map)))
-    (catch java.sql.SQLException e
-      (.getErrorCode e))))
+  (let [records (save-files (cons record-map record-maps))]
+    (try (conj! (recordmap/record-map->table record-map) (map #(recordmap/record-map->hack-map %) records))
+      (catch java.sql.SQLException e
+        (do
+          (delete-files records)
+          (.getErrorCode e))))))
 
 (defn update
-  [table-name old-map new-map]
-    (let [persist-table  (table db/db table-name)]
-      (update-in!
-        persist-table 
-        (where (reduce and* (for [[k v] (recordmap/record-map->hack-map old-map)] (=* k v))))
-        new-map)))
-
+  ([old-map new-map]
+    (update {old-map new-map}))
+  ([old-new-map]
+    (let [persist-table (recordmap/record-map->table (val (first old-new-map)))]
+      (try 
+        (doseq [[old-map new-map] old-new-map]
+          (update-in!
+            persist-table 
+            (where (reduce and* (for [[k v] (recordmap/record-map->hack-map old-map)] (=* k v))))
+            new-map))
+        (catch java.sql.SQLException e
+          (.getErrorCode e))))))
+  
 (defn delete
   [record-map]
   (let [persist-table  (table db/db table-name)]

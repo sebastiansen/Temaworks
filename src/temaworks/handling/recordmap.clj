@@ -6,7 +6,8 @@
     temaworks.handling.prueba
     temaworks.handling.aspect
     temaworks.meta.types)
-  (:import [temaworks.meta.types Entity-type Attribute Interval Reference Relationship])
+  (:import [temaworks.meta.types Entity-type Attribute Interval Reference Relationship]
+    (org.zkoss.util.media Media AMedia))
   (:require [temaworks.handling.db :as db])
   (:refer-clojure
    :exclude [compile distinct drop group-by take sort conj! disj!]))

@@ -198,14 +198,17 @@
                     (.addEventListener "onUpload"
                       (proxy [EventListener][]
                         (onEvent [e]
-                          (setter (.getMedia e) (.getName @media) false)))))
+                          (let [media (.getMedia e)]
+                            (setter media (.getName media) false))))))
         remove-button (doto (Button. "Vaciar") (add-event! "onClick" #(setter nil nil true)))]
     (multi-append! (:widget wrapper)
       [file-name up-button down-button remove-button])
     (merge wrapper
-      {:getter (fn [] @media)
-       :setter (fn [media] (setter media (if media (.getName media)) false))
-       :enabler #()
+      {:getter   #(@media)
+       :setter   (fn [file-path]
+                   
+                   (setter media (if media (.getName media)) false))
+       :enabler  #(doseq [button [down-button remove-button up-button]] (.setDisabled button true))
        :unlocker #(.setReadonly up-button (not %))})))
 
 (defmulti gen-ref-widget (fn [refe scope] (:widget-type refe)))
@@ -541,7 +544,7 @@
    val -> Attribute | Reference | Interval
    key -> *Widget-wrapper"
   ([order scope]
-    (make-widgets order scope (:specs (meta order)) nil nil))
+    (make-widgets order scope nil nil (:specs (meta order))))
   
   ([order scope reference ref-map]
     (make-widgets order scope reference ref-map (:specs (meta order))))
@@ -562,7 +565,7 @@
           order))
     
     (let [widgets (maker-helper (new-order order))]
-      (if reference 
+      (if (dbg reference) 
         (assoc widgets
           reference
           (let [wrapper (gen-widget (with-meta (assoc reference :widget-type :ref-box) {:scope scope :specs specs}))
@@ -597,9 +600,9 @@
 
 (defn gen-quantity-widget
   [{:keys [multi-name]}]
-  (let [widget (Textbox.)]
+  (let [widget (Intbox.)]
     (Attribute-widget-wrapper.
-      :textbox
+      :intbox
       (Label. (str "# de " multi-name " a crear:"))
       widget
       #(.getValue widget)

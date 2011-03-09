@@ -4,23 +4,37 @@
             Checkbox Combobox
             Button Image)))
 
+(defrecord App
+  [name ops initial-views menu-type icon tooltip image])
+
+(defrecord Operation
+  [name entity-type operation icon tooltip])
+
+(defrecord View
+  [name ops view-type widgets views icon tooltip])
+
+(defrecord Tag
+  [name ops icon tooltip])
+
 (defrecord Entity-type
   [table-name                 ;; Name of table (keyword)
    single-name                ;; Single name  
    multi-name                 ;; Plural name for  
    atts                       ;; Attributes
    refs                       ;; References corresponing to relationships
-   in-menu                    ;; Specifies if this entity appear in the global menu
+   in-menu?                   ;; Specifies if the entity appears in the global menu
    form-order                 ;; (vector) 
    selector-order             ;; (vector) 
    search-order               ;; (vector)
+   bulk-create-order
    filter-ref                 ;;   
    to-str                     ;; 
-   operations                 ;; Global operations :search? :create? :update? :delete?
+   ops                        ;; Global operations :search? :create? :update? :delete?
    auto-inc-pk?               ;;
    ;; on-create
    ;; on-update
-   icon])
+   icon
+   tooltip])
 
 (defrecord Relationship
   [from-entity 

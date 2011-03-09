@@ -2,13 +2,15 @@
   (:import 
     (org.zkoss.zul 
       Grid Row Rows Columns Column
-      Borderlayout North Center)
+      Borderlayout North Center
+      Tab Tabpanel)
+    (org.zkoss.zk.ui.event EventListener MouseEvent)
     [temaworks.handling.recordmap Record-map Interval-map])
   (:use [temaworks.handling aspect]))
 
 (defn gen-grid
   [rows first-column-width]
-  (let [max-witdth-column (fn [](apply max (map #(.getWidth (first (.getChildren %))) rows)))]
+  (let [max-witdth-column (fn [] (apply max (map #(.getWidth (first (.getChildren %))) rows)))]
     (cascade-append!
       [(multi-append! (Rows.) rows)
        (doto (Grid.) (.setHflex "1")
@@ -17,10 +19,30 @@
          (.appendChild (doto (Columns.) (.appendChild (doto (Column.) (.setWidth first-column-width))))))])))
 
 (defn gen-form-layout
-  [menu grid]
+  [menubar grid]
   (multi-append! (Borderlayout.)
-    [(doto (North.) (.appendChild menu))
+    [(append! (North.) menubar)
      (doto (Center.) (.setFlex true) (.appendChild grid))]))
+
+(defn gen-tab-panel
+  [layout]
+  (append! (doto (Tabpanel.) (.setHeight "100%"))
+    layout))
+
+(defn gen-tab
+  ([icon]
+    (gen-tab "" icon))
+  ([label icon]
+    (doto (Tab. label) (.setClosable true)
+      (#(.addEventListener % "onClick"
+          (proxy [EventListener] []
+            (onEvent [e]
+              (when (= (bit-or MouseEvent/LEFT_CLICK MouseEvent/CTRL_KEY)  (dbg (.getKeys e )))
+                (.onClose %))))))
+      (#(when icon
+          (.setImage % (icon icons)))))))
+  
+
 
 (defmulti to-str class)
 (defmethod to-str Long           [x] (Long/toString x)                                              )

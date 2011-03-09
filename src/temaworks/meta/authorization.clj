@@ -4,7 +4,6 @@
 (def temaworks-user
   (Entity-type.
    :temaworks_user "Usuario" "Usuarios"
-    
     [(Attribute.
        "Usuario" :user  String :textbox true true false nil)
      (Attribute.
@@ -14,8 +13,10 @@
     [] 
     []
     []
+    []
     nil
     #("")
     nil
     false
-    :user))
+    :user
+    "grege"))

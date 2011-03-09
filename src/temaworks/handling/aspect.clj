@@ -1,10 +1,11 @@
 (ns temaworks.handling.aspect
-  (:import (org.zkoss.zul
-            Tabbox Tabs Tab Tabpanel Tabpanels))
-  (:import (org.zkoss.zk.ui 
-             Executions Desktop))
-  (:import (org.zkoss.zk.ui.event
-             EventListener)))
+  (:import 
+    (org.zkoss.zul
+      Tabbox Tabs Tab Tabpanel Tabpanels)
+    (org.zkoss.zk.ui 
+      Executions Desktop)
+    (org.zkoss.zk.ui.event
+      EventListener)))
 
 (defmacro dbg[x] `(let [x# ~x] (println "dbg:" '~x "=" x#) (println "\tType = " (type x#)) x#))
 
@@ -28,6 +29,10 @@
                 (.appendChild parent child)
                 parent)
         components))))
+
+(defn append!
+  [parent child]
+  (doto parent (.appendChild child)))
 
 (defn multi-append! 
   [parent-widget children-widgets]
@@ -60,6 +65,9 @@
 
 (defn third [coll]
   (nth coll 3))
+
+(def *files-path*
+  "d:/reda/temaworks/files/")
 
 (def icons
   {:add "/img/add.png"

@@ -6,13 +6,12 @@
     clojureql.predicates
     temaworks.handling.db)
   (:require clojure.zip)
-  (:import [temaworks.meta.types Entity-type Attribute Reference Relationship Interval])
+  (:import [temaworks.meta.types Entity-type Attribute Reference Relationship Interval Tag Operation App])
   
   (:refer-clojure
     :exclude [compile distinct drop group-by take sort conj! disj! < <= > >= =]))
 
 (declare travel city state)
-
 
 (defn origin-city
   []
@@ -23,7 +22,6 @@
   []
   (Relationship.
    #(travel) #(city) true true :many-to-one {:destination_city :name :destination_state :state} nil))
-
 
 (defn city-has-state
   []
@@ -37,13 +35,28 @@
                       :from
                       :ref-box
                       nil)
-        destination (Reference.
-                      "Destino"
-                      :destination
-                      #(destination-city)
-                      :from
-                      :combobox
-                      nil)]
+      destination (Reference.
+                    "Destino"
+                    :destination
+                    #(destination-city)
+                    :from
+                    :combobox
+                    nil)
+      create-op   (Tag. "Crear viaje" 
+                    [(Operation.
+                       "Cosasasasa"
+                       #(travel)
+                       :create
+                       :wewa
+                       "asfasf")
+                     (Operation.
+                       "Creación masiva"
+                       #(travel)
+                       :bulk-create
+                       :wewa
+                       "asfasf")]
+                    :travel 
+                    "Vender pasajes")]
 
   (defn travel []
     (Entity-type. 
@@ -70,13 +83,19 @@
          (Interval.
            (Attribute.
              "Date" :date  java.util.Date :datebox true true false nil))] {:specs [:optional]})
+      (with-meta 
+        [origin
+         destination
+         (Attribute.
+           "Date" :date  java.util.Date :datebox true true false nil)] {:specs [:optional]})
       nil
       #(get (:values %) 
          (Attribute.
            "Date" :date  java.util.Date :datebox true true false nil))
-      nil
+      [(Operation. "Buscar" #(travel) :search :aea "Buscar WEAS") create-op]
       false
-      :group)))
+      :group
+      "Travel")))
 
 (let [stato (Reference.
               "State"
@@ -99,13 +118,15 @@
       [(Attribute.
       "Name" :name String :textbox true true false nil)]
       []
+      []
       stato
       #(get (:values %) 
          (Attribute.
            "Name" :name String :textbox true true false nil))
       nil
       false
-      :group)))
+      :group
+      nil)))
 
 (defn state
   []
@@ -118,17 +139,23 @@
     {}   
     false
     [] 
-     []
-     []
-     nil
-     #(get (:values %) (Attribute.
-                         "Name" :name String :textbox true true false nil))
-     nil
-     false
-     :group))
+    []
+    []
+    []
+    nil
+    #(get (:values %) (Attribute.
+                        "Name" :name String :textbox true true false nil))
+    nil
+    false
+     :group
+     nil))
 
-(def types [(state) (city) (travel)])
-
-(def initial-view {:view-type :selector :entity-type (travel)})
-
-(def app-name "Wladibus")
+(def app 
+  (App.
+    "Wladibus"
+    [(travel) (Tag. "Cosa" [(Tag. "poto" nil :caca "POTITO")] :wdwa "COSITAAA")]
+    nil
+    :tree
+    :wea
+    "POTOBUS"
+    :north))
