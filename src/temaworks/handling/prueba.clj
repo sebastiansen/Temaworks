@@ -12,7 +12,6 @@
     :exclude [compile distinct drop group-by take sort conj! disj! < <= > >= =]))
 
 (declare travel city state)
-
 (defn origin-city
   []
   (Relationship.
@@ -155,7 +154,7 @@
     "Wladibus"
     [(travel) (Tag. "Cosa" [(Tag. "poto" nil :caca "POTITO")] :wdwa "COSITAAA")]
     nil
-    :tree
+    :menubar
     :wea
     "POTOBUS"
     :north))
