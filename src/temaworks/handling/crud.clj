@@ -4,116 +4,60 @@
     clojureql.internal
     clojureql.predicates
     clojure.contrib.sql
-    clj-time.core
     temaworks.meta.types
     temaworks.handling.aspect
-    temaworks.handling.prueba
-    clojure.contrib.io)
-  (:import [temaworks.meta.types Entity-type Attribute Reference Relationship]
-    (org.zkoss.util.media Media AMedia))
+    temaworks.handling.prueba)
+  (:import [temaworks.meta.types Entity-type Attribute Reference Relationship])
   (:require clojure.set
     [temaworks.handling.recordmap :as recordmap]
     [temaworks.handling.db :as db])
   (:refer-clojure
-   :exclude [spit extend compile distinct drop group-by take sort conj! disj!]))
+   :exclude [compile distinct drop group-by take sort conj! disj!]))
 
-;; Standardize on usage of record-crap within and amongst functions
+;; Standardize on usage of cloud-crap within and amongst functions
 
-(declare search-with-refs select-by-key select-by-fuzzy-example 
-  select-by-exact-example count-query cut-by-paging apply-sorting make-joins)
 
-(defn file-atts
-  [record-map]
-  (reduce merge
-    {}
-    (filter 
-      (fn [[att-ref value]]
-        (and 
-          (is-type? att-ref Attribute) 
-          (= (:data-type att-ref) org.zkoss.util.media.Media) 
-          value))
-      record-map)))
+(declare search-with-refs select-by-key select-by-fuzzy-example select-by-exact-example count-query cut-by-paging apply-sorting make-joins)
 
-(defn save-file
-  [media file-att entity-type]
-  (let [path (str *files-path*
-               (:single-name entity-type) "/" (:att-name file-att) "/"
-               (milli now) (.getName media))]
-    (with-open [f (file path)]
-      (make-parents f)
-      (copy (.getStreamData media) f))
-    (with-meta media {:path path})))
-
-(defn remove-file
-  [path]
-  (with-open [f (file path)]
-    (delete-file f)))
-
-(defn save-files
-  [record-maps]
-  (reduce 
-    (fn [record-maps r-map]
-      (conj record-maps
-        (reduce 
-          (fn [record-map [file-att media]]
-              (recordmap/assoc-val record-map file-att (save-file media file-att (:entity-type record-map))))
-          r-map
-          (file-atts r-map))))
-    []
-    record-maps))
-
-(defn delete-files
-  [record-maps]
-  (doseq [r-map record-maps]
-    (doseq [[file-att media] (file-atts r-map)]
-      (remove-file (:path (meta media))))))
+(def *cljql-identity* (=* 1 1))
 
 (defn create
-  [record-map & record-maps]
-  (let [records (save-files (cons record-map record-maps))]
-    (try (conj! (recordmap/record-map->table record-map) (map #(recordmap/record-map->hack-map %) records))
+  [table-name record-map & recordmaps-maps]
+  (let [persist-table  (table db/db table-name)]
+    (try (conj! persist-table (map #(recordmap/record-map->hack-map %) (conj record-maps record-map)))
       (catch java.sql.SQLException e
-        (do
-          (delete-files records)
-          (.getErrorCode e))))))
+        (.getErrorCode e)))))
 
 (defn update
-  ([old-map new-map]
-    (update {old-map new-map}))
-  ([old-new-map]
-    (let [persist-table (recordmap/record-map->table (val (first old-new-map)))]
-      (try 
-        (doseq [[old-map new-map] old-new-map]
-          (update-in!
-            persist-table 
-            (where (reduce and* (for [[k v] (recordmap/record-map->hack-map old-map)] (=* k v))))
-            new-map))
-        (catch java.sql.SQLException e
-          (.getErrorCode e))))))
-  
+  [table-name old-map new-map]
+    (let [persist-table  (table db/db table-name)]
+      (update-in!
+        persist-table 
+        (where (apply and* (for [[k v] (recordmap/record-map->hack-map old-map)] (=* k v))))
+        new-map)))
+
 (defn delete
-  [record-map]
+  [table-name record-map]
   (let [persist-table  (table db/db table-name)]
     (try @(disj! 
             persist-table 
-            (where (reduce and* (for [[k v] (recordmap/record-map->hack-map record-map)] (=* k v)))))
+            (where (apply and* (for [[k v] (recordmap/record-map->hack-map cloud-map)] (=* k v)))))
       (catch java.sql.SQLException e
         (.getErrorCode e)))))
 
 (defn search-all
   [entity-type]
-  (map #(recordmap/hack-map->record-map entity-type %)
-    @(table db/db (:table-name entity-type))))
+  (map #(recordmap/hack-map->record-map entity-type %) @(table db/db (:table-name entity-type))))
 
 (defn exists?
   [record-map]
   (not (nil? @(->
                 (recordmap/record-map->table record-map) 
-                (select-by-exact-example 
+                (select-by-exact-example
                   (:table-name (:entity-type record-map))
-                  (recordmap/record-map->hack-map 
-                    {(:entity-type record-map) 
-                     (recordmap/select-pks (first record-map))}))))))
+                  (recordmap/record-map->hack-map
+                    (recordmap/record-map (:entity-type record-map)
+                      (recordmap/select-pks record-map))))))))
 
 (defn search-with-count
   [query entity-type]
@@ -121,27 +65,24 @@
     (map #(recordmap/hack-map->record-map entity-type %) @query)))
 
 (defn search-by-refs
-  [query from to]
+  [query record-map]
   (-> (apply 
         select-by-fuzzy-example 
-        (cons query (map recordmap/record-map->hack-map [from to])))
-    (make-joins from to)
+        (cons query (recordmap/record-map->hack-map record-map)))
+    (make-joins record-map)
     (project [:*])))
 
 (defn search-by-key
   [query record-map word]
-  (let [entity-type (:entity-type record-map)]
-    (if-let [atts (dorun (filter #(= (:data-type %) String) (:atts entity-type)))]
-      (select-by-key
-        query
-        (:table-name entity-type)
-        word
-        (map #(:col-name %) atts))
-      query)))
+  (select-by-key
+    query
+    (:table-name (:entity-type record-map))
+    word
+    (map #(:col-name %) 
+      (filter #(= (:data-type %) String) (:atts (:entity-type record-map))))))
 
 
 (defn search-with-criteria
-  
   ([page per-page sort-field sort-order]
     (fn [query]
       (-> (cut-by-paging query page per-page) 
@@ -154,23 +95,22 @@
   
   ;; criteria
   ;; criteria + refs
-  ([from to page per-page sort-field sort-order]
-    (let [criteria-query (-> (recordmap/record-map->table from)
+  ([example page per-page sort-field sort-order]
+    (let [criteria-query (-> (cloudmap/cloud-map->table from)
                            ((search-with-criteria page per-page sort-field sort-order)))
-          entity-type (:entity-type from)]
-      
-      (if (empty? (recordmap/children from))
+          entity-type (cloudmap/tag from)]
+      (if (empty? (cloudmap/children from))
         (search-with-count criteria-query entity-type)
         (search-with-count (search-with-refs criteria-query from to) entity-type))))
   
   ;; criteria + key
   ;; criteria + key + refs
   ([from to word page per-page sort-field sort-order]
-    (let [key-query (-> (recordmap/record-map->table from)
+    (let [key-query (-> (cloudmap/cloud-map->table from)
                       ((search-with-criteria page per-page sort-field sort-order))
                       (search-by-key from word))
-          entity-type (:entity-type from)]
-      (if (empty? (recordmap/children from))
+          entity-type (cloudmap/root from)]
+      (if (empty? (cloudmap/children from))
         (search-with-count key-query entity-type)
         (search-with-count (search-with-refs key-query from to) entity-type)))))
 
@@ -187,200 +127,203 @@
   [query sort-field sort-order] 
   (sort query [(keyword (str (name sort-field) sort-order))]))
 
-(defn at-root
-  [node]
-  (println node)
-  (if (map? node)
-    (key (first node))
-    (key node)))
-
-(defn at-children
-  [node]
-  (if (map? node)
-    (vals node)
-    (val node)))
+(defrecord Alias-tree
+  [#^String prefix entity-type children])
 
 
-(defn at-root?
-  [node]
-  (is-type? (:source (at-root node)) Entity-type))
-
-(defn at-inner?
-  [node]
-  (and
-    (not (is-type? (at-root node) Attribute))
-    (is-type? (:source (at-root node)) Reference)))
-
-(defn make-alias-tree [prefix node]
+(defn make-alias-tree 
+  [prefix #^Record-map node]
   
-  (defn- make-children [prefix name node]
-    (hash-map
-      {:prefix prefix
-       :name name
-       :source (:entity-type node)}
-      (reduce merge 
-        (map
-          (fn [entry] (make-alias-tree
-                        prefix
-                        entry))
-          (recordmap/children node)))))
-    
-  (cond
-   ;; Provably wrong
-   true
-   {(:entity-type node) (recordmap/children node)}
-    
-   true
-   (make-children
-    (:table-name (:entity-type node))
-    (:table-name (:entity-type node))
-    node)
-   
-   :else
-   ;; reference
-    (let [reference (:entity-type node)]
-      (make-children 
-       (str prefix "_" (name (:key-name reference)))
-       (table-name reference)
-       node))))
+  (Alias-tree. 
+    prefix 
+    (:entity-type node)
+    (reduce merge
+      {}
+      (map
+        (fn [entry]
+          (hash-map 
+            (recordmap/tag entry)
+            (make-alias-tree
+              (str prefix "_" (name (:key-name (recordmap/tag entry))))
+              (val entry))))
+        (filter recordmap/inner? (:children node)))
+      
+      )))
+
+
+(defn am-has-children?
+  [alias-map]
+  (not-empty (:children alias-map))) 
 
 (defn make-table
   "Constructs a table object from an aliases-tree node"
- [node]	    	   
- (table {(:name (at-root node)) (:prefix (at-root node))}))
+ [alias-map]	    	   
+ (table (:table-name (:entity-type alias-map)) 
+   (:prefix alias-map)))
 
 (defn make-joins
   "Constructs ..."
-  ([query [from-tree to-tree]]
-    (defn- make-alias
-      "Constructs the aliased form keyword of a column corresponding to a table in the joins-tree"
-      [node column]
-      (let [prefix (if (string? node) ;; the base case
-                     node
-                     (:prefix node))] 
-        (keyword (str prefix "." (name column)))))
-    
-    
-    (defn- join-columns
-      "Creates the equality predicates to join columns between two tables along a branch of the joins-tree"
-      [source-node destination-node]
-      (let [reference (:source destination-node)]
-        (reduce and*
-          (for [[local foreign] (:fks-pks ((:rel reference)))]
-                (=*
-                  (make-alias source-node local)
-                  (make-alias destination-node foreign))))))
-      
-    (defn- compare-values
-      "Constructs a parameterized comparison predicate for certain set of columns in a join expression"
-      [op destination-node branch]
-      (reduce and*
-        (map
-          (fn [node]
-            (op (make-alias destination-node
-                  (:col-name (:entity-type node)))
-              (recordmap/children node)))
-          (filter recordmap/leaf? (recordmap/children branch)))))
-    
-    
-    (defn- join-values
-      "Constructs comparison predicates to restrict the concrete values of a certain join expression"
-      ([destination-node from-branch]
-        (compare-values =* destination-node from-branch))
-      ([destination-node from-branch to-branch]	  
-        (reduce and* (list (compare-values =*
-                             destination-node
-                             (filter-keys from-branch
-                               #(not (contains? to-branch %))))
-                       (compare-values >=*
-                         destination-node
-                         (select-keys from-branch
-                           (keys to-branch)))
-                       (compare-values <=*
-                         destination-node
-                         to-branch)))))
-    
-    (defn- join-on
-      "Generates the full join between two nodes of the tree"
-      [query source-alias destination-alias from-branch to-branch]
-      (join query
-        (make-table destination-alias)
-        (where (and (join-columns source-alias
-                      destination-alias)
-                 (join-values destination-alias from-branch to-branch)))))
-    
-    
-    (letfn [(join-children
-              [query source-alias from-branch to-branch]
-              (let [alias-mapping (reduce merge
-                                    (map 
-                                      (fn [node]				      
-                                        {(:source (at-root node)) node})
-                                      source-alias))]
-                (first (reduce (fn [[acc-query source-alias] child-node]
-                                 (vector (join-branch acc-query
-                                           source-alias
-                                           (alias-mapping child-node)
-                                           child-node
-                                           (find to-branch (:entity-type child-node)))
-                                   (alias-mapping child-node)))
-                         [query source-alias]
-                         (recordmap/children from-branch)))))
-            (join-branch
-              [query source-alias destination-alias from-branch to-branch]
-              (join-children
-                (join-on query source-alias destination-alias from-branch to-branch)
-                source-alias
-                from-branch
-                to-branch))]
-      
+  ([query #^recordmap.Record-map example]
+
+     (defn- high-filter
+       ([exprs val]
+         (high-filter exprs val val))
+       
+       ([exprs val default]
+         (cond
+           (or (map? exprs) (not (coll? exprs)))
+           (if (not= exprs val)
+             exprs
+             default)
+           :else
+           (let [filtered (filter #(not= % val) exprs)]
+             (if (not-empty filtered)
+               filtered
+               default))
+           )))
+     
+     
+     (defn- make-alias
+       "Constructs the aliased form keyword of a column corresponding to a table in the joins-tree"
+       [node column]
+       (let [prefix (if (string? node) ;; the base case
+                      node
+                      (:prefix node))] 
+         (str (name prefix) "." (name column))))
+     
+     
+     (defn- join-columns
+       "Creates the equality predicates to join columns between two tables along a branch of the joins-tree"
+       [source-node reference]
+
+       (high-filter (reduce and*
+                      (for [[local foreign] (:fks-pks ((:rel reference)))]
+                        (=*
+                          (make-alias source-node local)
+                          (make-alias (get (:children source-node) reference) foreign))))
+         (and*)
+         *cljql-identity*))
+     
+     (defn- compare-value
+       "Constructs a comparison predicate for a certain column and a value"
+       [op alias-node attribute value]
+       
+       (op (make-alias destination-node
+             (:col-name attribute))
+         value))
+     
+     
+     
+     (defn- join-values
+       "Constructs comparison predicates to restrict the concrete values of a certain join expression"
+       ([destination-node example-node]
+         (-> 
+           (reduce
+             and*
+             *cljsql-identity*
+             (high-filter
+               (map
+                 (fn [[tag value]]
+                   (if (is-type? (recordmap/tag child) Interval)
+                   (and*
+                     (compare-value >=* destination-node (:att tag) (:from value))
+                     (compare-value <=* destination-node (:att tag) (:to value)))
+                   (compare-value =* destination-node tag value)))
+                 (filter recordmap/leaf? (recordmap/children node)))
+               *cljsql-identity*))
+           
+           (high-filter
+             
+             (and* *cljsql-identity* *cljsql-identity*)
+             *cljsql-identity*)))             
+           
+     
+     
+     
+     (defn- join-on
+       "Generates the full join between two nodes of the tree"
+       [query source-alias reference example-branch]
+       (if-let [destination-alias (get (:children source-alias) 
+                                    reference)]
+         (join 
+           query
+           (make-table destination-alias)
+           (where (and
+                    (join-columns source-alias reference)
+                    (join-values destination-alias example-branch))))
+         query))
+     
+     
+     
+     (letfn [(join-children
+               [query source-alias example-record]
+               (reduce
+                 (fn [acc-query child-node]
+                   (join-branch
+                     acc-query
+                     source-alias
+                     (recordmap/tag child-node)
+                     (val child-node)))
+                 query
+                 (filter cloudmap/inner? (recordmap/children example-record))))
+             
+             (join-branch
+               [query source-alias reference example-branch]    
+               (join-children
+                 (join-on query source-alias reference example-branch)
+                 (get (:children destination-alias) reference)
+                 example-branch))]
+       
        (join-children
          query
          (make-alias-tree "" from-tree)
          from-tree
          to-tree))))
 
+
+
+
 (defn select-by-key
   [query table word atts]  
   (select query 
-    (where 
-      (apply or* 
-        (map (fn [x] (like (keyword (str (name table) "." (name x))) word)) atts)))))
+	  (where 
+	   (apply or* 
+		  (map (fn [x] (like (keyword (str (name table) "." (name x))) word)) atts)))))
 
 (defn select-by-fuzzy-example
   ([query table from]
-    (select-by-fuzzy-example query table from nil))
+     (select-by-fuzzy-example query table from nil))
   ([query table from to]
-    (select query 
-      (where 
-        (apply and* 
-          (for [[k v] from]
-            (cond 
-              (string? v)
-              (like (keyword (str (name table) "." (name k))) v)
-              
-              (map? v)
-              (apply and*
-                (if (nil? (k to))
-                  (for [[func value] v]
-                    (let [app-func (keyword (str func "/" (name (keyword (str (name table) "." (name k))))))]
-                      (=* app-func value)))
-                  (for [[func value] v]
-                    (let [app-func (keyword (str func "/" (name (keyword (str (name table) "." (name k))))))
-                          to-func ((k to) func)]
-                      (if (nil? to-func)
-                        (=* app-func value)
-                        (and* (>=* app-func value) (<=* app-func to-func)))))))
-              
-              :else
-              (if (nil? (k to))
-                (=* (keyword (str (name table) "." (name k))) v)
-                (and* (>=* (keyword (str (name table) "." (name k))) v) 
-                  (<=* (keyword (str (name table) "." (name k))) (k to)))))))))))
+     (select query 
+	     (where 
+	      (apply and* 
+		     (for [[k v] from]
+		       (cond 
+			(string? v)
+			(like (keyword (str (name table) "." (name k))) v)
+			
+			(map? v)
+			(apply and*
+			       (if (nil? (k to))
+				 (for [[func value] v]
+				   (let [app-func (keyword (str func "/" (name (keyword (str (name table) "." (name k))))))]
+				     (=* app-func value)))
+				 (for [[func value] v]
+				   (let [app-func (keyword (str func "/" (name (keyword (str (name table) "." (name k))))))
+					 to-func ((k to) func)]
+				     (if (nil? to-func)
+				       (=* app-func value)
+				       (and* (>=* app-func value) (<=* app-func to-func)))))))
+			
+			:else
+			(if (nil? (k to))
+			  (=* (keyword (str (name table) "." (name k))) v)
+			  (and* (>=* (keyword (str (name table) "." (name k))) v) (<=* (keyword (str (name table) "." (name k))) (k to)))))))))))
 
+;; hack-map -> query 
 (defn select-by-exact-example
   [query table example]
   (select query 
-    (where
-      (reduce and* 
-        (for [[k v] example] (=* (keyword (str (name table) "." (name k))) v))))))
+	  (where
+	   (reduce and* 
+		   (for [[k v] example] (=* (keyword (str (name table) "." (name k))) v))))))
