@@ -7,7 +7,7 @@
     temaworks.meta.types
     temaworks.handling.aspect
     temaworks.handling.prueba)
-  (:import [temaworks.meta.types Entity-type Attribute Reference Relationship])
+  (:import [temaworks.meta.types Entity-type Attribute Reference Relationship Interval])
   (:require clojure.set
     [temaworks.handling.recordmap :as recordmap]
     [temaworks.handling.db :as db])
@@ -22,7 +22,7 @@
 (def *cljql-identity* (=* 1 1))
 
 (defn create
-  [table-name record-map & recordmaps-maps]
+  [table-name record-map & record-maps]
   (let [persist-table  (table db/db table-name)]
     (try (conj! persist-table (map #(recordmap/record-map->hack-map %) (conj record-maps record-map)))
       (catch java.sql.SQLException e
@@ -41,7 +41,7 @@
   (let [persist-table  (table db/db table-name)]
     (try @(disj! 
             persist-table 
-            (where (apply and* (for [[k v] (recordmap/record-map->hack-map cloud-map)] (=* k v)))))
+            (where (apply and* (for [[k v] (recordmap/record-map->hack-map record-map)] (=* k v)))))
       (catch java.sql.SQLException e
         (.getErrorCode e)))))
 
@@ -90,29 +90,26 @@
             (apply-sorting % sort-field sort-order)
             %)))))
   
-  ([from page per-page sort-field sort-order]
-    (search-with-criteria from nil page per-page sort-field sort-order))
-  
   ;; criteria
   ;; criteria + refs
   ([example page per-page sort-field sort-order]
-    (let [criteria-query (-> (cloudmap/cloud-map->table from)
+    (let [criteria-query (-> (recordmap/record-map->table example)
                            ((search-with-criteria page per-page sort-field sort-order)))
-          entity-type (cloudmap/tag from)]
-      (if (empty? (cloudmap/children from))
+          entity-type (:entity-type example)]
+      (if (empty? (recordmap/children example))
         (search-with-count criteria-query entity-type)
-        (search-with-count (search-with-refs criteria-query from to) entity-type))))
+        (search-with-count (search-with-refs criteria-query example) entity-type))))
   
   ;; criteria + key
   ;; criteria + key + refs
-  ([from to word page per-page sort-field sort-order]
-    (let [key-query (-> (cloudmap/cloud-map->table from)
+  ([example word page per-page sort-field sort-order]
+    (let [key-query (-> (recordmap/record-map->table example)
                       ((search-with-criteria page per-page sort-field sort-order))
-                      (search-by-key from word))
-          entity-type (cloudmap/root from)]
-      (if (empty? (cloudmap/children from))
+                      (search-by-key example word))
+          entity-type (:entity-type example)]
+      (if (empty? (recordmap/children example))
         (search-with-count key-query entity-type)
-        (search-with-count (search-with-refs key-query from to) entity-type)))))
+        (search-with-count (search-with-refs key-query example) entity-type)))))
 
 (defn count-query
   [query]
@@ -151,15 +148,15 @@
       )))
 
 
-(defn am-has-children?
-  [alias-map]
-  (not-empty (:children alias-map))) 
+(defn at-has-children?
+  [alias-tree]
+  (not-empty (:children alias-tree))) 
 
 (defn make-table
   "Constructs a table object from an aliases-tree node"
- [alias-map]	    	   
- (table (:table-name (:entity-type alias-map)) 
-   (:prefix alias-map)))
+ [alias-tree]	    	   
+ (table (:table-name (:entity-type alias-tree)) 
+   (:prefix alias-tree)))
 
 (defn make-joins
   "Constructs ..."
@@ -206,7 +203,7 @@
      
      (defn- compare-value
        "Constructs a comparison predicate for a certain column and a value"
-       [op alias-node attribute value]
+       [op #^Alias-tree destination-node attribute value]
        
        (op (make-alias destination-node
              (:col-name attribute))
@@ -220,22 +217,22 @@
          (-> 
            (reduce
              and*
-             *cljsql-identity*
+             *cljql-identity*
              (high-filter
                (map
                  (fn [[tag value]]
-                   (if (is-type? (recordmap/tag child) Interval)
+                   (if (is-type? tag Interval)
                    (and*
                      (compare-value >=* destination-node (:att tag) (:from value))
                      (compare-value <=* destination-node (:att tag) (:to value)))
                    (compare-value =* destination-node tag value)))
-                 (filter recordmap/leaf? (recordmap/children node)))
-               *cljsql-identity*))
+                 (filter recordmap/leaf? (recordmap/children example-node)))
+               *cljql-identity*))
            
            (high-filter
              
-             (and* *cljsql-identity* *cljsql-identity*)
-             *cljsql-identity*)))             
+             (and* *cljql-identity* *cljql-identity*)
+             *cljql-identity*))))          
            
      
      
@@ -265,20 +262,19 @@
                      (recordmap/tag child-node)
                      (val child-node)))
                  query
-                 (filter cloudmap/inner? (recordmap/children example-record))))
+                 (filter recordmap/inner? (recordmap/children example-record))))
              
              (join-branch
                [query source-alias reference example-branch]    
                (join-children
                  (join-on query source-alias reference example-branch)
-                 (get (:children destination-alias) reference)
+                 (get (:children source-alias) reference)
                  example-branch))]
        
        (join-children
          query
-         (make-alias-tree "" from-tree)
-         from-tree
-         to-tree))))
+         (make-alias-tree "" example)
+         example))))
 
 
 
