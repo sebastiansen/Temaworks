@@ -4,60 +4,119 @@
     clojureql.internal
     clojureql.predicates
     clojure.contrib.sql
+    clj-time.core
     temaworks.meta.types
     temaworks.handling.aspect
-    temaworks.handling.prueba)
-  (:import [temaworks.meta.types Entity-type Attribute Reference Relationship Interval])
+    temaworks.handling.prueba
+    clojure.contrib.io)
+  (:import [temaworks.meta.types Entity-type Attribute Reference Relationship]
+    (org.zkoss.util.media Media AMedia))
+
   (:require clojure.set
     [temaworks.handling.recordmap :as recordmap]
     [temaworks.handling.db :as db])
   (:refer-clojure
-   :exclude [compile distinct drop group-by take sort conj! disj!]))
+   :exclude [spit extend compile distinct drop group-by take sort conj! disj!]))
 
-;; Standardize on usage of cloud-crap within and amongst functions
-
-
-(declare search-with-refs select-by-key select-by-fuzzy-example select-by-exact-example count-query cut-by-paging apply-sorting make-joins)
+;; Standardize on usage of record-crap within and amongst functions
 
 (def *cljql-identity* (=* 1 1))
 
+(declare search-with-refs select-by-key select-by-fuzzy-example 
+  select-by-exact-example count-query cut-by-paging apply-sorting make-joins)
+
+(defn file-atts
+  [record-map]
+  (reduce merge
+    {}
+    (filter 
+      (fn [[att-ref value]]
+        (and 
+          (is-type? att-ref Attribute) 
+          (= (:data-type att-ref) org.zkoss.util.media.Media) 
+          value))
+      record-map)))
+
+(defn save-file
+  [media file-att entity-type]
+  (let [path (str *files-path*
+               (:single-name entity-type) "/" (:att-name file-att) "/"
+               (milli now) (.getName media))]
+    (with-open [f (file path)]
+      (make-parents f)
+      (copy (.getStreamData media) f))
+    (with-meta media {:path path})))
+
+(defn remove-file
+  [path]
+  (with-open [f (file path)]
+    (delete-file f)))
+
+(defn save-files
+  [record-maps]
+  (reduce 
+    (fn [record-maps r-map]
+      (conj record-maps
+        (reduce 
+          (fn [record-map [file-att media]]
+              (recordmap/assoc-val record-map file-att (save-file media file-att (:entity-type record-map))))
+          r-map
+          (file-atts r-map))))
+    []
+    record-maps))
+
+(defn delete-files
+  [record-maps]
+  (doseq [r-map record-maps]
+    (doseq [[file-att media] (file-atts r-map)]
+      (remove-file (:path (meta media))))))
+
 (defn create
-  [table-name record-map & record-maps]
-  (let [persist-table  (table db/db table-name)]
-    (try (conj! persist-table (map #(recordmap/record-map->hack-map %) (conj record-maps record-map)))
+  [record-map & record-maps]
+  (let [records (save-files (cons record-map record-maps))]
+    (try (conj! (recordmap/record-map->table record-map) (map #(recordmap/record-map->hack-map %) records))
       (catch java.sql.SQLException e
-        (.getErrorCode e)))))
+        (do
+          (delete-files records)
+          (.getErrorCode e))))))
 
 (defn update
-  [table-name old-map new-map]
-    (let [persist-table  (table db/db table-name)]
-      (update-in!
-        persist-table 
-        (where (apply and* (for [[k v] (recordmap/record-map->hack-map old-map)] (=* k v))))
-        new-map)))
-
+  ([old-map new-map]
+    (update {old-map new-map}))
+  ([old-new-map]
+    (let [persist-table (recordmap/record-map->table (val (first old-new-map)))]
+      (try 
+        (doseq [[old-map new-map] old-new-map]
+          (update-in!
+            persist-table 
+            (where (reduce and* (for [[k v] (recordmap/record-map->hack-map old-map)] (=* k v))))
+            new-map))
+        (catch java.sql.SQLException e
+          (.getErrorCode e))))))
+  
 (defn delete
-  [table-name record-map]
+  [record-map]
   (let [persist-table  (table db/db table-name)]
     (try @(disj! 
             persist-table 
-            (where (apply and* (for [[k v] (recordmap/record-map->hack-map record-map)] (=* k v)))))
+            (where (reduce and* (for [[k v] (recordmap/record-map->hack-map record-map)] (=* k v)))))
       (catch java.sql.SQLException e
         (.getErrorCode e)))))
 
 (defn search-all
   [entity-type]
-  (map #(recordmap/hack-map->record-map entity-type %) @(table db/db (:table-name entity-type))))
+  (map #(recordmap/hack-map->record-map entity-type %)
+    @(table db/db (:table-name entity-type))))
 
 (defn exists?
   [record-map]
   (not (nil? @(->
                 (recordmap/record-map->table record-map) 
-                (select-by-exact-example
+                (select-by-exact-example 
                   (:table-name (:entity-type record-map))
-                  (recordmap/record-map->hack-map
-                    (recordmap/record-map (:entity-type record-map)
-                      (recordmap/select-pks record-map))))))))
+                  (recordmap/record-map->hack-map 
+                    {(:entity-type record-map) 
+                     (recordmap/select-pks (first record-map))}))))))
 
 (defn search-with-count
   [query entity-type]
