@@ -5,7 +5,7 @@
     clojureql.internal
     clojureql.predicates
     temaworks.handling.crud
-    temaworks.handling.cloudmap)
+    temaworks.handling.recordmap)
   (:require clojure.zip)
   (:import [temaworks.meta.types Entity-type Attribute Reference Relationship])
   (:require [temaworks.handling.db :as db]) 
