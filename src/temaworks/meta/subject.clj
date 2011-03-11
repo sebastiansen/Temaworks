@@ -1,103 +1,196 @@
 (ns temaworks.meta.subject)
 
-;;defentity
+{}
 
-;;defattribute
+(def default-widgets
+  {String        :textbox
+   Integer       :intbox
+   Double        :doublebox
+   Long          :longbox
+   Boolean       :checkbox
+   Date          :datebox
+   Timestamp     :datetime
+   Media         :filebox
+   :function     :textbox})
 
-;;defreference
+(def operations-types
+  {:update
+  :form-update
+  :task
+  :selector
+  :show
+  :create
+  :tag 876})
 
-;;defrelationship
-
-;; We show here that the stack monad obeys the subject laws,
-;; as per the Wladimir-JP isomorphism, which can be expressed
-;; succintly with an if.
-
-;;make-constraint
-
-;; Bindings... motherfucker! How will we do them?
-;; * Monadic crap
-;; * Let 'n' gensym (ewwww!)
-;; * Lotsa lotsa refs
+(defmacro entity
+  [single-name specs]
+  (let [{:auto-inc-pk (fn []
+                        )
+         }]
+    (new-rec Entity-type
+      )))
 
 (let-subject buses-wlad
+  
+  (state                                  
+    {:display ["State" "States"]
+     :constraints :pk                      
+     :auto-inc-pk [0 inc "ID"]
+     :atts {nombre {:display "Nombre"
+                    :type String}}})
 
   (entity city
-    :auto-inc-pk 0 inc "ID" ;; o podría ser por defecto JPesco
-    (atts 
-      nombre [:display "Nombre"
-              :type String])
-    (entity state ;; genera una relationship city-has-state y una entity city.state o state?
-      :display "State"
-      :constraints :pk
-      :cardi :m-to-o ;; o-to-m por defecto?
-      :auto-inc-pk 0 inc "ID"
-      (atts
-        nombre [:display "Nombre"
-                :type String])))
+    {:auto-inc-pk [0 inc "ID"]                     ;; o podría ser por defecto JPesco
+     :atts {nombre 
+            {:display "Nombre"
+             :type String}}})
+  
+  (entity ticket
+    {:display ["Venta Pasaje" " Venta Pasajes"]
+     
+     :atts
+     {disponible? 
+      {:display "Disponible"
+       :type Boolean}}
+     
+     :refs
+     {seat
+      {:display "Asiento"
+       :entity  :seat
+       :widget  {:type :ref-form
+                :aggs {:order [:numero]}}}
+      travel
+      {:display "Viaje"
+       :entity  :travel
+       :widget  {:type :ref-form
+                 :aggs {:order [:origen :destino :fecha-salida :fecha-llegada]}}}}
+     
+     :operations
+     {"Realizar Venta"
+      {:type        :update
+       :action-name "Finalizar Venta"
+       :order       [seat travel pay-type]
+       :before      [#(=> % disponible? false)]}
+      
+      "Cancelar Pasaje"
+      {:type        :update 
+       :action-name "Cancelar Pasaje"
+       :order       [seat travel]
+       :before      [#(=> % disponible? true)]}}})
+  
+  (entity seat
+    {:display ["Asiento" "Asientos"]
+     :atts
+     {numero {:display "N°"
+              :type Integer
+              :constraints :not-nil}}
+     :refs
+     {bus {:display "Bus"}}})
+  
+  (entity bus
+    {:fns
+     {disponible? 
+      (fn [b begin end]
+        (empty?
+          @(make-joins 
+             (assoc-val b travel 
+               (record-map travel 
+                 {:fecha-salida  {:from begin :to end}
+                  :fecha-llegada {:from begin :to end}})))))}})
   
   (entity travel
-    :auto-inc-pk 0 #(+ % 5) "ID"
-    :display "Viaje"
-    
-    (rel origen ;; genera una relationship travel-origen-city ? 
-      :display "Origen"
-      :cardi :m-to-o
-      :constraints :not-nil
-      :widget :combobox)
-    
-    (rel destino ;; genera una relationship travel-destination-city ? 
-      :display "Destino"
-      :cardi :m-to-o
-      :constraints :not-nil
-      :widget :combobox)
-    
-    (atts 
-      fecha-salida [:display "Fecha Salida"
-                    :type Timestamp
-                    :constraints :not-nil] ;; widget :datetime por defecto
+    {:auto-inc-pk [0 inc "ID"]
+     :display ["Viaje" "Viajes"]
+     
+     :atts
+     {fecha-salida         {:display "Fecha Salida"
+                            :type Timestamp
+                            :constraints :not-nil} ;; widget :datetime por defecto
       
-      fecha-llegada [:display "Fecha Llegada"
-                    :type Timestamp
-                    :constraints :not-nil
-                    :computable #()]
+      fecha-llegada        {:display "Fecha Llegada"
+                            :type Timestamp
+                            :constraints :not-nil
+                            :computable #()}
       
-      asientos-disponibles [:display "Asientos disponibles"
-                            :display-only
-                            :function #(count 
-                                         (filter #(nose-que-wea % disponible?) seats)) ;; identificar seats como collection
-                            ;; :type String por defecto
-                            ;; y se aplica to-str al resultado de la función 
-                            ])
-    (entity seats
-      :display "Seats"
-      :cardi :o-to-m
-      :bidir)
+      asientos-disponibles {:display "Asientos disponibles"
+                            :type Integer
+                            :fn 
+                            #(count 
+                               (filter 
+                                 (fn [seat] (=> seat :seat/disponible?)) seats))}}
+     :fns
+     {retraso              {:display "Retraso"
+                            :type DateTime
+                            :fn #(interval (now) fecha-llegada)}}
+     
+     :refs 
+     {origen ;; genera una relationship travel-origen-city ? 
+      {:display "Origen"
+       :entity city
+       :cardi :m-to-o
+       :constraints :not-nil
+       :widget :combobox}
+      
+      destino ;; genera una relationship travel-destination-city ? 
+      {:display "Destino"
+       :entity city
+       :cardi :m-to-o
+       :constraints :not-nil
+       :widget :combobox}
+      
+      bus
+      {:display "Bus"
+       :entity bus
+       :constraints #()}
+      
+      tickets
+      {:display "Tickets"
+       :entity ticket
+       :cardi :o-to-m
+       :widget {:type :selector 
+                :aggs {:actions update}}}}
+          
+     :operations
+     {"Nuevo viaje"
+      {:type :tag
+       :ops  ["Crear único viaje"]}
+      "Buscar Pasaje"
+      {:type                :selector
+       :search-layout       [origen destino [fecha-salida :interval]] 
+       :cols                [origen destino fecha-salida fecha-llegada asientos-disponibles retraso cancelado?]
+       :operations          ["Revisar Disponibilidad" "Actualizar datos" "Nuevo viaje"]}
+      "Cancelar viaje"
+      {:type   :update
+       :do     #(=> % cancelado? true)}
+      "Revisar Disponibilidad"
+      {:type :show
+       :layout [origen destino fecha-salida fecha-llegada tickets]}
+      "Actualizar datos"
+      {:type :form-update
+       :layout [[[origen fecha-salida] [destino fecha-llegada]] tickets]
+       :operations ["Cancelar Viaje"]}
+      "Crear único viaje"
+      {:type :create
+       :layout [bus driver origen destino fecha-salida fecha-llegada]
+       :constraints #(> fecha-salida (now))
+       :after [#(create (map (fn [s]
+                              (record-map :ticket 
+                                {:ticket/disponible? true
+                                 :ticket/seat s
+                                 :ticket/travel this}))
+                         (=> this bus seats)))]}}
+     
+     :constraints
+     [#(and (not= origin destino) (not= fecha-salida fecha-llegada)) ;; opcion 1
+      [#(not= origin destino)                                        ;; opcion 2 / activar por eventos de widgets?
+       "Ciudad de origen no puede ser igual a la de destino"]])
     
-    :form-order [:id origen destino fecha-salida fecha-llegada seats] ;; :id si tiene un auto-inc
-    :search-order [origen destino (with-algo fecha-salida 
-                                    :interval
-                                    :widget :datewea)]
+    :scheds
+    [{:begin (now) :end (now) :period [1 :week] 
+      :fn #()}]
     
-    (constraint ;; opcion 1
-      (and (not= origin destino) (not= fecha-salida fecha-llegada)))
-    
-    (constraint ;; opcion 2
-      (not= origin destino) ;; activar por eventos de widgets?
-      "Ciudad de origen no puede ser igual a la de destino")
-    
-    (on-create
-      (if (= (access travel city name) "San Francisco")
-        ()
-        ()))))
-
-(defmacro defrel
-  [bind-name from-entity to-entity specs]
-  )
-
-(defn gen-scheme)
-
-(defmacro let-subject
-  [& defs])
-
-(defmacro defentity
-  [])
+    :menu-ops {:type :menubar
+               :ops  wa
+               {"Ventas pasajes"
+                {:type :tag
+                 :ops }}})

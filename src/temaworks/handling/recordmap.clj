@@ -32,13 +32,17 @@
   ([entity-type tag children]
     (Record-map. entity-type {tag children})))
 
-(defn assoc-val
-  [{:keys [entity-type values]} att-ref value]
-  (Record-map. entity-type (assoc values att-ref value)))
-
 (defn children
   [record-map]
   (:values record-map))
+
+(defn =>
+  [record-map key]
+  (get (children record-map) key))
+
+(defn assoc-val
+  [{:keys [entity-type values]} att-ref value]
+  (Record-map. entity-type (assoc values att-ref value)))
 
 (defn tag [node] (key node))
 

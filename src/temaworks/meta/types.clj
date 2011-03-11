@@ -91,7 +91,8 @@
    :radiogroup "org.zkoss.zul.Radiogroup"
    :combobox "org.zkoss.zul.Combobox"
    :spinner "org.zkoss.zul.Spinner"
-   :filebox "org.zkoss.zul.Hbox"})
+   :filebox "org.zkoss.zul.Hbox"
+   :computable "org.zkoss.zul.Textbox"})
 
 (def input-formats
   {:rut "#.###.###-#"

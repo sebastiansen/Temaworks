@@ -175,6 +175,7 @@
   (do (println query)
   (second (ffirst @(aggregate (dbg query) [:count/*])))))
 
+
 (defn cut-by-paging
   [query page per-page]
   (-> (drop query (int (* page per-page)))
