@@ -199,12 +199,9 @@
           list-selector?    (not (nil? ref-map))
           table-state-order [:page :per-page :sort-field :sort-order]
           table-state       (ref {:page 0 :per-page 30 :sort-field nil :sort-order nil})
-          criteria-order    [:from-example :to-example :key-search]
-          criteria          (ref {:from-example (if list-selector? 
-                                                  (record-map entity-type reference ref-map)  
-                                                  (record-map entity-type)) 
-                                  :to-example   (record-map entity-type) 
-                                  :key-search   nil})
+          criteria-order    [:example :key-search]
+          criteria          (ref {:example    (record-map entity-type) 
+                                  :key-search nil})
           paging            (ref nil)
           update-button     (ref nil) 
           table             (ref nil)
@@ -234,7 +231,7 @@
                             (do 
                               (dosync (alter table-state assoc :page (.getActivePage @paging)))
                               (map #(% @table-state) table-state-order))))
-                 rows (second result)]
+                 rows (second (dbg result))]
              (dosync (ref-set record-maps rows))
              (doto (.getModel @table) 
                (.clear)

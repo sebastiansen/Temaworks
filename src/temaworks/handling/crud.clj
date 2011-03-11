@@ -9,7 +9,7 @@
     temaworks.handling.aspect
     temaworks.handling.prueba
     clojure.contrib.io)
-  (:import [temaworks.meta.types Entity-type Attribute Reference Relationship]
+  (:import [temaworks.meta.types Entity-type Attribute Reference Relationship Interval]
     (org.zkoss.util.media Media AMedia))
 
   (:require clojure.set
@@ -22,7 +22,7 @@
 
 (def *cljql-identity* (=* 1 1))
 
-(declare search-with-refs select-by-key select-by-fuzzy-example 
+(declare search-by-refs select-by-key select-by-fuzzy-example 
   select-by-exact-example count-query cut-by-paging apply-sorting make-joins)
 
 (defn file-atts
@@ -157,7 +157,7 @@
           entity-type (:entity-type example)]
       (if (empty? (recordmap/children example))
         (search-with-count criteria-query entity-type)
-        (search-with-count (search-with-refs criteria-query example) entity-type))))
+        (search-with-count (search-by-refs criteria-query example) entity-type))))
   
   ;; criteria + key
   ;; criteria + key + refs
@@ -168,11 +168,11 @@
           entity-type (:entity-type example)]
       (if (empty? (recordmap/children example))
         (search-with-count key-query entity-type)
-        (search-with-count (search-with-refs key-query example) entity-type)))))
+        (search-with-count (search-by-refs key-query example) entity-type)))))
 
 (defn count-query
   [query]
-  (second (ffirst @(aggregate query [:count/*]))))
+  (second (ffirst @(aggregate (dbg query) [:count/*]))))
 
 (defn cut-by-paging
   [query page per-page]

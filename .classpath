@@ -19,11 +19,5 @@
 	<classpathentry kind="lib" path="clojure.jar" sourcepath="clojure-src.jar"/>
 	<classpathentry kind="lib" path="clojure-contrib.jar" sourcepath="clojure-contrib-src.jar"/>
 	<classpathentry kind="lib" path="classes"/>
-	<classpathentry kind="lib" path="/home/gabriel/workspace/Temaworks-backup/lib/zweb-5.0.6.jar"/>
-	<classpathentry kind="lib" path="/home/gabriel/workspace/Temaworks-backup/lib/zk-5.0.6.jar"/>
-	<classpathentry kind="lib" path="/home/gabriel/workspace/Temaworks-backup/lib/bsh-2.0b4.jar"/>
-	<classpathentry kind="lib" path="/home/gabriel/workspace/Temaworks-backup/lib/zcommon-5.0.6.jar"/>
-	<classpathentry kind="lib" path="/home/gabriel/workspace/Temaworks-backup/lib/zul-5.0.6.jar"/>
-	<classpathentry kind="lib" path="/home/gabriel/workspace/Temaworks-backup/lib/zcommons-el-1.1.0.jar"/>
 	<classpathentry kind="output" path="build/classes"/>
 </classpath>
