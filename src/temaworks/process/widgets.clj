@@ -206,7 +206,6 @@
     (merge wrapper
       {:getter   #(@media)
        :setter   (fn [file-path]
-                   
                    (setter media (if media (.getName media)) false))
        :enabler  #(doseq [button [down-button remove-button up-button]] (.setDisabled button true))
        :unlocker #(.setReadonly up-button (not %))})))
@@ -337,7 +336,7 @@
                (when-not (empty? parents)
                  (let [{:keys [filter-ref entity-type combo]} (first parents)]
                    (when (zero? (.getSelectedIndex combo))
-                     (let [this-map (record-map entity-type (get (children filtered-map) reference))]
+                     (let [this-map (get (children filtered-map) reference)]
                        (set-value (first parents))
                        (recur filter-ref (rest parents) this-map)))))))
          
@@ -361,13 +360,13 @@
                (reverse c-wrappers))))
          
          (defn- setter
-           [record-map]
-           (if (nil? record-map)
+           [rec-map]
+           (if (nil? rec-map)
              (load-children c-wrappers (record-map (:entity-type (first c-wrappers))) false)
              (reduce
                (fn [[reference cascade-setter filtered-map] c-wrapper]
                  (let [{:keys [filter-ref entity-type combo]} c-wrapper
-                       this-map (record-map entity-type (get (children filtered-map) reference))]
+                       this-map (get (children filtered-map) reference)]
                    (if (= c-wrapper (first c-wrappers))
                      (do
                        (add-event! combo "onAfterRender"
@@ -384,7 +383,7 @@
                       this-map])))
                [refe
                 #() 
-                (assoc-val {} refe (children record-map))]
+                (assoc-val {} refe (children rec-map))]
                (reverse c-wrappers))))
          
          (add-events)
@@ -592,11 +591,7 @@
   [widgets r-map]
   (doseq [[att-ref wrapper] widgets]
     ((:setter wrapper) 
-      (if (is-type? att-ref Attribute)
-        (get (children r-map) att-ref)
-        (let [rel ((:rel att-ref))]
-          (record-map ((:to-entity rel))
-            (get (children record-map) att-ref)))))))
+      (get (children r-map) att-ref))))
 
 (defn gen-quantity-widget
   [{:keys [multi-name]}]

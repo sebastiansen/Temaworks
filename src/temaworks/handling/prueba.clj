@@ -72,8 +72,9 @@
          destination
          (Attribute.
            "Date" :date  java.util.Date :datebox true true false nil)
-         (Attribute.
-           "File" :file java.util.Date :filebox true true false nil)] {:specs [:constrain]}) 
+         ;(Attribute.
+         ;  "File" :file java.util.Date :filebox true true false nil)
+         ] {:specs [:constrain]}) 
       [(Attribute.
          "Date" :date  java.util.Date :datebox true true false nil)]
       (with-meta 
