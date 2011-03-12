@@ -231,7 +231,7 @@
                             (do 
                               (dosync (alter table-state assoc :page (.getActivePage @paging)))
                               (map #(% @table-state) table-state-order))))
-                 rows (second (dbg result))]
+                 rows (second result)]
              (dosync (ref-set record-maps rows))
              (doto (.getModel @table) 
                (.clear)
@@ -615,7 +615,7 @@
          
          (make-many-ref-rows
            []
-           (let [rows (.getRows (dbg @grid))]
+           (let [rows (.getRows @grid)]
              (doseq [{:keys [setter gen-widget]} many-ref-widgets]
                (setter @record-map)
                (multi-append! rows (gen-widget)))))
@@ -695,7 +695,6 @@
            (make-state)
            (when @editing?
              (set-widgets-values widgets @record-map)
-             (pr "qwertyuiiuytre")
              (make-many-ref-rows)
              ;(disable-pks)
              ))]

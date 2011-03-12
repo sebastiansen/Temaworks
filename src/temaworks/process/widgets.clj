@@ -321,7 +321,8 @@
                        new-map (record-map entity-type filter-ref (with-meta (children r-map) {:fuzzy false}))]
                    (when with-cleaning? (clear-listeners! combo "onAfterRender"))
                    (clear-combo c-wrapper)
-                   (load-combo c-wrapper (map hack-map->record-map @(make-joins (record-map->table new-map) new-map)))
+                   (load-combo c-wrapper (map #(hack-map->record-map entity-type %) 
+                                           @(make-joins (record-map->table new-map) new-map)))
                    new-map))
                r-map
                (rest c-wrappers))
@@ -330,15 +331,16 @@
       
          (defn- set-parents
            [c-wrappers r-map]
-           (loop [reference (:filter-ref (first c-wrappers))
-                  parents (rest c-wrappers)
-                  filtered-map r-map]
+           (when-not (empty? (children r-map))
+             (loop [reference (:filter-ref (first c-wrappers))
+                    parents (rest c-wrappers)
+                    filtered-map r-map]
                (when-not (empty? parents)
                  (let [{:keys [filter-ref entity-type combo]} (first parents)]
                    (when (zero? (.getSelectedIndex combo))
                      (let [this-map (get (children filtered-map) reference)]
                        (set-value (first parents))
-                       (recur filter-ref (rest parents) this-map)))))))
+                       (recur filter-ref (rest parents) this-map))))))))
          
          (defn- add-events
            []
@@ -383,7 +385,7 @@
                       this-map])))
                [refe
                 #() 
-                (assoc-val {} refe (children rec-map))]
+                {:values {refe rec-map}}]
                (reverse c-wrappers))))
          
          (add-events)
@@ -564,7 +566,7 @@
           order))
     
     (let [widgets (maker-helper (new-order order))]
-      (if (dbg reference) 
+      (if reference
         (assoc widgets
           reference
           (let [wrapper (gen-widget (with-meta (assoc reference :widget-type :ref-box) {:scope scope :specs specs}))

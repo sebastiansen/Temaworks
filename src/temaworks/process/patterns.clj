@@ -37,7 +37,7 @@
       (#(.addEventListener % "onClick"
           (proxy [EventListener] []
             (onEvent [e]
-              (when (= (bit-or MouseEvent/LEFT_CLICK MouseEvent/CTRL_KEY)  (dbg (.getKeys e )))
+              (when (= (bit-or MouseEvent/LEFT_CLICK MouseEvent/CTRL_KEY)  (.getKeys e ))
                 (.onClose %))))))
       (#(when icon
           (.setImage % (icon icons)))))))

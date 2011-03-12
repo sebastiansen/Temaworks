@@ -11,7 +11,6 @@
     clojure.contrib.io)
   (:import [temaworks.meta.types Entity-type Attribute Reference Relationship Interval]
     (org.zkoss.util.media Media AMedia))
-
   (:require clojure.set
     [temaworks.handling.recordmap :as recordmap]
     [temaworks.handling.db :as db])
@@ -172,8 +171,7 @@
 
 (defn count-query
   [query]
-  (do (println query)
-  (second (ffirst @(aggregate (dbg query) [:count/*])))))
+  (second (ffirst @(aggregate query [:count/*]))))
 
 
 (defn cut-by-paging
